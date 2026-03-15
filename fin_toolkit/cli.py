@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import sys
 from pathlib import Path
@@ -83,7 +82,12 @@ def _serve() -> None:
     if "kase" in available:
         from fin_toolkit.providers.kase import KASEProvider
 
-        providers["kase"] = KASEProvider()
+        providers["kase"] = KASEProvider(yahoo=providers.get("yahoo"))
+
+    if "moex" in available:
+        from fin_toolkit.providers.moex import MOEXProvider
+
+        providers["moex"] = MOEXProvider()
 
     if "financialdatasets" in available:
         from fin_toolkit.providers.financialdatasets import FinancialDatasetsProvider
@@ -93,6 +97,10 @@ def _serve() -> None:
         )
         if fd_key:
             providers["financialdatasets"] = FinancialDatasetsProvider(api_key=fd_key)
+
+    # EDGAR: always available (no API key), but only for financials
+    from fin_toolkit.providers.edgar import EdgarProvider
+    providers["edgar"] = EdgarProvider()
 
     provider_router = ProviderRouter(config=config, providers=providers)
 

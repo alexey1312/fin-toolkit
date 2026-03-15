@@ -101,6 +101,14 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Field rename mapping in `_FIELD_RENAME`: `net_cash_flow_from_operations` → `operating_cash_flow`, `price_to_earnings_ratio` → `pe_ratio` (via `get_metrics`)
 - US equities only, 17k+ tickers, 30+ years history from SEC EDGAR
 
+### KASE provider
+
+- JSON API (`kase.kz/api/*`), no auth, no API key needed
+- Two-layer design: `_KASEClient` (HTTP client) + `KASEProvider` (protocol adapter)
+- Historical OHLCV: delegated to Yahoo Finance via `{ticker}.ME` suffix (KASE API has no history endpoint)
+- `get_metrics()` maps KASE fields (`capit` → `market_cap`, `pe` → `pe_ratio`, etc.); `get_financials()` returns None (no reporting data)
+- `KASEProvider(yahoo=providers.get("yahoo"))` — Yahoo instance passed from `cli.py`
+
 ## Testing
 
 - TDD: write tests first
@@ -119,3 +127,4 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Line length: 100
 - `from __future__ import annotations` in every module
 - All provider/agent methods are async
+- For strict mypy with JSON API wrappers: use `dict(data)` (not `cast`) to convert `Any` returns to `dict[str, Any]`

@@ -1,0 +1,32 @@
+[
+  {
+    "code": "KCEL",
+    "name": "Kcell JSC",
+    "name_kz": "Kcell АҚ",
+    "sec_type": "share",
+    "isin": "KZ1C00002429",
+    "listing_category": "1",
+    "currency": "KZT",
+    "sector": "telecommunications"
+  },
+  {
+    "code": "HSBK",
+    "name": "Halyk Savings Bank of Kazakhstan JSC",
+    "name_kz": "Қазақстанның Халық Жинақ Банкі АҚ",
+    "sec_type": "share",
+    "isin": "KZ1C00000850",
+    "listing_category": "1",
+    "currency": "KZT",
+    "sector": "financials"
+  },
+  {
+    "code": "KEGC",
+    "name": "Kazakhstan Electricity Grid Operating Company JSC",
+    "name_kz": "KEGOC АҚ",
+    "sec_type": "share",
+    "isin": "KZ1C00001718",
+    "listing_category": "1",
+    "currency": "KZT",
+    "sector": "utilities"
+  }
+]

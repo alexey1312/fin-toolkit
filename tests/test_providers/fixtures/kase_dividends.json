@@ -1,0 +1,20 @@
+[
+  {
+    "ticker": "KCEL",
+    "record_date": "2023-06-15",
+    "payment_date": "2023-07-01",
+    "dividend_per_share": 250.0,
+    "currency": "KZT",
+    "period": "2022",
+    "type": "annual"
+  },
+  {
+    "ticker": "KCEL",
+    "record_date": "2022-06-10",
+    "payment_date": "2022-06-30",
+    "dividend_per_share": 200.0,
+    "currency": "KZT",
+    "period": "2021",
+    "type": "annual"
+  }
+]
