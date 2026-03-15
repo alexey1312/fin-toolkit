@@ -178,26 +178,26 @@
 > **Subagent F** — `git worktree add ../ft-search feat/search-providers`
 > **Commit в ветку**: `feat: add SearchProvider protocol, Brave and SearXNG`
 
-- [ ] 8.1 **Тесты**: `tests/test_providers/test_search.py` — SearchProvider Protocol compliance, Brave search (mock API), SearXNG (mock HTTP), missing key → ProviderConfigError, fallback chain
-- [ ] 8.2 **Impl**: `SearchProvider` Protocol + `SearchResult` model (если не в models/)
-- [ ] 8.3 **Impl**: `BraveSearchProvider`, `SearXNGProvider`
-- [ ] 8.4 **Impl**: `SearchRouter` с fallback
-- [ ] 8.5 **Validate в worktree**: `uv run pytest tests/test_providers/ && uv run mypy && uv run ruff check`
+- [x] 8.1 **Тесты**: `tests/test_providers/test_search.py` — SearchProvider Protocol compliance, Brave search (mock API), SearXNG (mock HTTP), missing key → ProviderConfigError, fallback chain
+- [x] 8.2 **Impl**: `SearchProvider` Protocol + `SearchResult` model (если не в models/)
+- [x] 8.3 **Impl**: `BraveSearchProvider`, `SearXNGProvider`
+- [x] 8.4 **Impl**: `SearchRouter` с fallback
+- [x] 8.5 **Validate в worktree**: `uv run pytest tests/test_providers/ && uv run mypy && uv run ruff check`
 
 ### 9. Agent System ║ [worktree: feat/agent-system]
 
 > **Subagent G** — `git worktree add ../ft-agents feat/agent-system`
 > **Commit в ветку**: `feat: add agent system with Elvis Marlamov and Warren Buffett`
 
-- [ ] 9.1 **Тесты**: `tests/test_agents/test_protocol.py` — AnalysisAgent Protocol compliance
-- [ ] 9.2 **Тесты**: `tests/test_agents/test_elvis.py` — scoring blocks (Quality 40, Stability 20, Valuation 30, Sentiment 10), strong stock → Bullish (>=75), weak → Bearish (<50), mock DI, **без SearchProvider → Sentiment=0 + warning**, missing metrics → confidence снижен + warning
-- [ ] 9.3 **Тесты**: `tests/test_agents/test_buffett.py` — value investing criteria, AgentResult format, mock DI, missing data graceful degradation
-- [ ] 9.4 **Тесты**: `tests/test_agents/test_registry.py` — load from config, get_active_agents, unknown agent → AgentNotFoundError
-- [ ] 9.5 **Impl**: `AnalysisAgent` Protocol
-- [ ] 9.6 **Impl**: `ElvisMarlamovAgent` с constructor DI (DataProvider + analyzers + optional SearchProvider). Sentiment block = 0 если search не инжектирован.
-- [ ] 9.7 **Impl**: `WarrenBuffettAgent` с constructor DI (адаптация из ai-hedge-fund)
-- [ ] 9.8 **Impl**: `AgentRegistry` — сборка агентов с зависимостями из конфига (включая optional SearchProvider)
-- [ ] 9.9 **Validate в worktree**: `uv run pytest tests/test_agents/ && uv run mypy && uv run ruff check`
+- [x] 9.1 **Тесты**: `tests/test_agents/test_protocol.py` — AnalysisAgent Protocol compliance
+- [x] 9.2 **Тесты**: `tests/test_agents/test_elvis.py` — scoring blocks (Quality 40, Stability 20, Valuation 30, Sentiment 10), strong stock → Bullish (>=75), weak → Bearish (<50), mock DI, **без SearchProvider → Sentiment=0 + warning**, missing metrics → confidence снижен + warning
+- [x] 9.3 **Тесты**: `tests/test_agents/test_buffett.py` — value investing criteria, AgentResult format, mock DI, missing data graceful degradation
+- [x] 9.4 **Тесты**: `tests/test_agents/test_registry.py` — load from config, get_active_agents, unknown agent → AgentNotFoundError
+- [x] 9.5 **Impl**: `AnalysisAgent` Protocol
+- [x] 9.6 **Impl**: `ElvisMarlamovAgent` с constructor DI (DataProvider + analyzers + optional SearchProvider). Sentiment block = 0 если search не инжектирован.
+- [x] 9.7 **Impl**: `WarrenBuffettAgent` с constructor DI (адаптация из ai-hedge-fund)
+- [x] 9.8 **Impl**: `AgentRegistry` — сборка агентов с зависимостями из конфига (включая optional SearchProvider)
+- [x] 9.9 **Validate в worktree**: `uv run pytest tests/test_agents/ && uv run mypy && uv run ruff check`
 
 ### 11. Skills ║ [worktree: feat/skills]
 
@@ -205,22 +205,22 @@
 > Skills — markdown файлы, не зависят от кода, только ссылаются на MCP tool names. Можно писать параллельно с Block 2.
 > **Commit в ветку**: `feat: add Claude Code skills for financial analysis workflows`
 
-- [ ] 11.1 **Impl**: `skills/dcf-valuation/SKILL.md` — YAML frontmatter + DCF workflow (get_stock_data → run_fundamental_analysis → user assumptions → compute intrinsic value)
-- [ ] 11.2 **Impl**: `skills/dcf-valuation/references/dcf-guide.md` — detailed DCF methodology
-- [ ] 11.3 **Impl**: `skills/technical-screen/SKILL.md` — technical screening workflow
-- [ ] 11.4 **Impl**: `skills/earnings-analysis/SKILL.md` — earnings quality workflow
-- [ ] 11.5 **Impl**: `skills/portfolio-review/SKILL.md` — multi-stock + risk analysis workflow
-- [ ] 11.6 **Impl**: `skills/kase-analysis/SKILL.md` — Kazakhstan market workflow
-- [ ] 11.7 Каждый skill: error handling секция (MCP connection, missing keys, pitchfork)
-- [ ] 11.8 **Validate в worktree**: verify YAML frontmatter syntax
+- [x] 11.1 **Impl**: `skills/dcf-valuation/SKILL.md` — YAML frontmatter + DCF workflow (get_stock_data → run_fundamental_analysis → user assumptions → compute intrinsic value)
+- [x] 11.2 **Impl**: `skills/dcf-valuation/references/dcf-guide.md` — detailed DCF methodology
+- [x] 11.3 **Impl**: `skills/technical-screen/SKILL.md` — technical screening workflow
+- [x] 11.4 **Impl**: `skills/earnings-analysis/SKILL.md` — earnings quality workflow
+- [x] 11.5 **Impl**: `skills/portfolio-review/SKILL.md` — multi-stock + risk analysis workflow
+- [x] 11.6 **Impl**: `skills/kase-analysis/SKILL.md` — Kazakhstan market workflow
+- [x] 11.7 Каждый skill: error handling секция (MCP connection, missing keys, pitchfork)
+- [x] 11.8 **Validate в worktree**: verify YAML frontmatter syntax
 
 ### ── Merge Gate 2 [orchestrator на main] ──
 
-- [ ] MG2.1 `git merge feat/search-providers` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG2.2 `git merge feat/agent-system` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG2.3 `git merge feat/skills` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG2.4 Cleanup worktrees
-- [ ] MG2.5 **Commit если нужен fix**: `fix: resolve integration issues from parallel merge`
+- [x] MG2.1 `git merge feat/search-providers` → `uv run pytest` (ALL) → green? ✓
+- [x] MG2.2 `git merge feat/agent-system` → `uv run pytest` (ALL) → green? ✓
+- [x] MG2.3 `git merge feat/skills` → `uv run pytest` (ALL) → green? ✓
+- [x] MG2.4 Cleanup worktrees
+- [x] MG2.5 **Commit если нужен fix**: `fix: resolve integration issues from parallel merge`
 
 ---
 
@@ -229,17 +229,17 @@
 > **Subagent H** — работает на main (нужны все модули).
 > **Commit**: `feat: add FastMCP server with 6 tools`
 
-- [ ] 10.1 **Тесты**: `tests/test_mcp/test_tools.py` — каждый tool: valid input → JSON, invalid ticker → is_error, rate limit → transparent retry
-- [ ] 10.2 **Impl**: FastMCP server (`server.py`) с @mcp.tool() декораторами
-- [ ] 10.3 **Impl**: `get_stock_data(ticker, period, provider?)` → JSON PriceData
-- [ ] 10.4 **Impl**: `run_technical_analysis(ticker)` → JSON TechnicalResult
-- [ ] 10.5 **Impl**: `run_fundamental_analysis(ticker, sector?)` → JSON FundamentalResult. Auto-detect sector через yfinance.Ticker.info["sector"] если не передан
-- [ ] 10.6 **Impl**: `run_risk_analysis(tickers, period)` → JSON RiskResult. MCP tool = orchestration layer: fetch PriceData per ticker → pass to risk pure functions
-- [ ] 10.7 **Impl**: `search_news(query, max_results)` → JSON SearchResult[]. Graceful degradation: если нет SearchProvider → return `[]` + warning
-- [ ] 10.8 **Impl**: `run_agent(ticker, agent)` → JSON AgentResult. Agent = mini-orchestrator (сам fetch'ит данные через injected DataProvider)
-- [ ] 10.9 **Impl**: unified error handler (is_error + descriptive message)
-- [ ] 10.10 **Impl**: `fin-toolkit serve` — запуск FastMCP на stdio, загрузка конфига (или defaults). Минимальный CLI entry point в `pyproject.toml` (`[project.scripts]`): `fin-toolkit = "fin_toolkit.cli:main"`
-- [ ] 10.11 **Validate**: `uv run pytest` (ALL) green
+- [x] 10.1 **Тесты**: `tests/test_mcp/test_tools.py` — каждый tool: valid input → JSON, invalid ticker → is_error, rate limit → transparent retry
+- [x] 10.2 **Impl**: FastMCP server (`server.py`) с @mcp.tool() декораторами
+- [x] 10.3 **Impl**: `get_stock_data(ticker, period, provider?)` → JSON PriceData
+- [x] 10.4 **Impl**: `run_technical_analysis(ticker)` → JSON TechnicalResult
+- [x] 10.5 **Impl**: `run_fundamental_analysis(ticker, sector?)` → JSON FundamentalResult. Auto-detect sector через yfinance.Ticker.info["sector"] если не передан
+- [x] 10.6 **Impl**: `run_risk_analysis(tickers, period)` → JSON RiskResult. MCP tool = orchestration layer: fetch PriceData per ticker → pass to risk pure functions
+- [x] 10.7 **Impl**: `search_news(query, max_results)` → JSON SearchResult[]. Graceful degradation: если нет SearchProvider → return `[]` + warning
+- [x] 10.8 **Impl**: `run_agent(ticker, agent)` → JSON AgentResult. Agent = mini-orchestrator (сам fetch'ит данные через injected DataProvider)
+- [x] 10.9 **Impl**: unified error handler (is_error + descriptive message)
+- [x] 10.10 **Impl**: `fin-toolkit serve` — запуск FastMCP на stdio, загрузка конфига (или defaults). Минимальный CLI entry point в `pyproject.toml` (`[project.scripts]`): `fin-toolkit = "fin_toolkit.cli:main"`
+- [x] 10.11 **Validate**: `uv run pytest` (ALL) green
 
 ---
 
@@ -250,34 +250,34 @@
 > **Subagent K** — `git worktree add ../ft-cli feat/cli`
 > **Commit в ветку**: `feat: add CLI setup, status commands and install script`
 
-- [ ] 13.1 **Тесты**: `tests/test_cli/test_setup.py` — setup создаёт `.mcp.json` + `~/.config/fin-toolkit/config.yaml`, идемпотентность (повторный вызов не перезаписывает), `--global` пишет в `~/.claude.json`, сохранение existing servers, локальный `./fin-toolkit.yaml` override
-- [ ] 13.2 **Impl**: `fin-toolkit setup [--global]` — создаёт локальный `.mcp.json` (или `--global` → `~/.claude.json`) с `{"command": "uvx", "args": ["fin-toolkit", "serve"]}` + `~/.config/fin-toolkit/config.yaml` defaults. Идемпотентна.
-- [ ] 13.3 **Impl**: `fin-toolkit status` — показывает конфиг, доступные провайдеры (✓/✗), активных агентов, наличие `.mcp.json`
-- [ ] 13.4 **Impl**: `install.sh` в корне репо — bootstrap скрипт: проверка/установка uv, `uv tool install fin-toolkit`, `fin-toolkit setup`
-- [ ] 13.5 **Validate в worktree**: `uv run pytest tests/test_cli/ && uv run mypy && uv run ruff check`
+- [x] 13.1 **Тесты**: `tests/test_cli/test_setup.py` — setup создаёт `.mcp.json` + `~/.config/fin-toolkit/config.yaml`, идемпотентность (повторный вызов не перезаписывает), `--global` пишет в `~/.claude.json`, сохранение existing servers, локальный `./fin-toolkit.yaml` override
+- [x] 13.2 **Impl**: `fin-toolkit setup [--global]` — создаёт локальный `.mcp.json` (или `--global` → `~/.claude.json`) с `{"command": "uvx", "args": ["fin-toolkit", "serve"]}` + `~/.config/fin-toolkit/config.yaml` defaults. Идемпотентна.
+- [x] 13.3 **Impl**: `fin-toolkit status` — показывает конфиг, доступные провайдеры (✓/✗), активных агентов, наличие `.mcp.json`
+- [x] 13.4 **Impl**: `install.sh` в корне репо — bootstrap скрипт: проверка/установка uv, `uv tool install fin-toolkit`, `fin-toolkit setup`
+- [x] 13.5 **Validate в worktree**: `uv run pytest tests/test_cli/ && uv run mypy && uv run ruff check`
 
 ### 12. Integration & Documentation ║ [worktree: feat/integration-docs]
 
 > **Subagent J** — `git worktree add ../ft-integration feat/integration-docs`
 > **Commit в ветку**: `feat: add CLAUDE.md, .mcp.json, README, integration tests`
 
-- [ ] 12.1 **Тесты**: `tests/test_integration/test_e2e.py` — полный pipeline: config → mock provider → analysis → MCP tool response. Использовать mock/recorded fixtures (VCR pattern), НЕ live API. Live API тесты — отдельный marker `pytest -m live`
-- [ ] 12.2 **Impl**: `CLAUDE.md` с master instructions для Claude Code
-- [ ] 12.3 **Impl**: `.mcp.json` пример конфигурации (для тех кто настраивает вручную)
-- [ ] 12.4 **Impl**: README — quick start: `uvx fin-toolkit setup` (primary) + `curl | sh` (bootstrap), архитектура, примеры
-- [ ] 12.5 **Validate в worktree**: `uv run pytest tests/test_integration/ && uv run mypy && uv run ruff check`
+- [x] 12.1 **Тесты**: `tests/test_integration/test_e2e.py` — полный pipeline: config → mock provider → analysis → MCP tool response. Использовать mock/recorded fixtures (VCR pattern), НЕ live API. Live API тесты — отдельный marker `pytest -m live`
+- [x] 12.2 **Impl**: `CLAUDE.md` с master instructions для Claude Code
+- [x] 12.3 **Impl**: `.mcp.json` пример конфигурации (для тех кто настраивает вручную)
+- [x] 12.4 **Impl**: README — quick start: `uvx fin-toolkit setup` (primary) + `curl | sh` (bootstrap), архитектура, примеры
+- [x] 12.5 **Validate в worktree**: `uv run pytest tests/test_integration/ && uv run mypy && uv run ruff check`
 
 ### ── Merge Gate 3 + Final Validation [orchestrator на main] ──
 
-- [ ] MG3.1 `git merge feat/cli` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG3.2 `git merge feat/integration-docs` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG3.3 Cleanup worktrees
-- [ ] MG3.4 **Final Gate**:
+- [x] MG3.1 `git merge feat/cli` → `uv run pytest` (ALL) → green? ✓
+- [x] MG3.2 `git merge feat/integration-docs` → `uv run pytest` (ALL) → green? ✓
+- [x] MG3.3 Cleanup worktrees
+- [x] MG3.4 **Final Gate**:
   - `uv run pytest --cov=fin_toolkit --cov-fail-under=80`
   - `uv run mypy fin_toolkit/`
   - `uv run ruff check fin_toolkit/`
-- [ ] MG3.5 **E2E (mock)**: `uv run pytest tests/test_integration/ -v` — полный pipeline на mock providers
-- [ ] MG3.6 **E2E (live, optional)**: `uv run pytest -m live` — ручной smoke test AAPL, SBER, KCEL (не блокирует merge)
+- [x] MG3.5 **E2E (mock)**: `uv run pytest tests/test_integration/ -v` — полный pipeline на mock providers
+- [x] MG3.6 **E2E (live, optional)**: `uv run pytest -m live` — ручной smoke test AAPL, SBER, KCEL (не блокирует merge)
 
 ---
 
