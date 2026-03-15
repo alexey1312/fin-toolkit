@@ -403,13 +403,13 @@ class TestElvisMarlamovAgentPipeline:
         assert 0.0 <= result.score <= 100.0
         assert 0.0 <= result.confidence <= 1.0
         assert "Elvis Marlamov" in result.rationale
-        assert "quality" in result.breakdown
-        assert "stability" in result.breakdown
         assert "valuation" in result.breakdown
-        assert "sentiment" in result.breakdown
-        # Without search, sentiment should be 0
-        assert result.breakdown["sentiment"] == 0.0
-        assert any("search" in w.lower() or "sentiment" in w.lower() for w in result.warnings)
+        assert "quality" in result.breakdown
+        assert "catalysts" in result.breakdown
+        assert "financial_health" in result.breakdown
+        # Without search, catalysts should be 0
+        assert result.breakdown["catalysts"] == 0.0
+        assert any("search" in w.lower() or "catalyst" in w.lower() for w in result.warnings)
 
     async def test_analyze_with_search(self) -> None:
         mock_provider = MockDataProvider()
@@ -429,8 +429,8 @@ class TestElvisMarlamovAgentPipeline:
 
         assert isinstance(result, AgentResult)
         assert result.signal in ("Bullish", "Neutral", "Bearish")
-        # With positive search results, sentiment should be > 0
-        assert result.breakdown["sentiment"] > 0.0
+        # With positive search results, catalysts should be > 0
+        assert result.breakdown["catalysts"] > 0.0
 
 
 # ---------------------------------------------------------------------------

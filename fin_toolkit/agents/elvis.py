@@ -1,9 +1,8 @@
-"""Elvis Marlamov analysis agent."""
+"""Elvis Marlamov 'Future Blue Chips' analysis agent."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
 
 from fin_toolkit.analysis.fundamental import FundamentalAnalyzer
 from fin_toolkit.analysis.technical import TechnicalAnalyzer
@@ -11,22 +10,60 @@ from fin_toolkit.models.results import AgentResult, FundamentalResult
 from fin_toolkit.providers.protocol import DataProvider
 from fin_toolkit.providers.search_protocol import SearchProvider
 
+# ---------------------------------------------------------------------------
+# Catalyst keywords for corporate event detection (EN + RU)
+# ---------------------------------------------------------------------------
+
+_POSITIVE_CATALYSTS: frozenset[str] = frozenset({
+    # M&A
+    "acquisition", "acquire", "merger", "takeover", "buyout",
+    "поглощение", "слияние", "приобретение", "скупка",
+    # Shareholder returns
+    "buyback", "repurchase", "обратный выкуп",
+    "dividend increase", "повышение дивидендов", "рост дивидендов",
+    # Corporate events
+    "reorganization", "restructuring", "реорганизация", "реструктуризация",
+    "spin-off", "выделение",
+    # Index / listing
+    "index inclusion", "включение в индекс",
+    # Strategic
+    "strategic investor", "стратегический инвестор",
+    "upgrade", "повышение рейтинга",
+})
+
+_NEGATIVE_CATALYSTS: frozenset[str] = frozenset({
+    "dilution", "размытие",
+    "bankruptcy", "банкротство",
+    "default", "дефолт",
+    "sanctions", "санкции",
+    "investigation", "расследование",
+    "downgrade", "понижение рейтинга",
+    "sell-off", "распродажа",
+    "fraud", "мошенничество",
+})
+
 
 class ElvisMarlamovAgent:
-    """Agent inspired by Elvis Marlamov's analysis methodology.
+    """Agent inspired by Elvis Marlamov's 'Future Blue Chips' methodology.
+
+    Elvis Marlamov is a Russian investor and founder of Alenka Capital, known
+    for finding deeply undervalued second-tier stocks with corporate catalysts
+    (M&A, reorganizations, index inclusions).  He groups emitters by sector,
+    compares multiples within each sector, and hunts for events that unlock
+    hidden value.  "A stock is a share in a business, not a trading instrument."
 
     Scoring blocks (max 100):
-        - Quality (40): fundamentals — ROE, ROA, margins
-        - Stability (20): debt/equity, current ratio
-        - Valuation (30): P/E vs reasonable threshold
-        - Sentiment (10): search-derived sentiment (0 if no search provider)
+        - Valuation (35): P/E, P/BV, EV/EBITDA, dividend yield, FCF yield
+        - Quality (25): ROE, net margin, gross margin
+        - Catalysts (25): M&A, corporate events, strategic moves via search
+        - Financial Health (15): D/E, current ratio, interest coverage
     """
 
     # Scoring block maximums
-    _MAX_QUALITY = 40.0
-    _MAX_STABILITY = 20.0
-    _MAX_VALUATION = 30.0
-    _MAX_SENTIMENT = 10.0
+    _MAX_VALUATION = 35.0
+    _MAX_QUALITY = 25.0
+    _MAX_CATALYSTS = 25.0
+    _MAX_FINANCIAL_HEALTH = 15.0
 
     def __init__(
         self,
@@ -41,7 +78,7 @@ class ElvisMarlamovAgent:
         self._search = search
 
     async def analyze(self, ticker: str) -> AgentResult:
-        """Run Elvis Marlamov-style analysis on a ticker."""
+        """Run Elvis Marlamov-style 'Future Blue Chips' analysis on a ticker."""
         warnings: list[str] = []
         missing_blocks = 0
         total_blocks = 4
@@ -57,48 +94,48 @@ class ElvisMarlamovAgent:
         # Run fundamental analysis
         fund_result = self._fundamental.analyze(financials, metrics)
 
-        # --- Quality score (max 40) ---
+        # --- Valuation score (max 35) — deep value focus ---
+        valuation, v_missing = self._score_valuation(fund_result, warnings)
+        if v_missing:
+            missing_blocks += 1
+
+        # --- Quality score (max 25) ---
         quality, q_missing = self._score_quality(fund_result, warnings)
         if q_missing:
             missing_blocks += 1
 
-        # --- Stability score (max 20) ---
-        stability, s_missing = self._score_stability(fund_result, metrics, warnings)
-        if s_missing:
-            missing_blocks += 1
-
-        # --- Valuation score (max 30) ---
-        valuation, v_missing = self._score_valuation(fund_result, metrics, warnings)
-        if v_missing:
-            missing_blocks += 1
-
-        # --- Sentiment score (max 10) ---
-        sentiment = 0.0
+        # --- Catalysts score (max 25) — corporate events ---
         if self._search is None:
-            warnings.append("No search provider — sentiment score is 0")
+            warnings.append("No search provider — catalyst score is 0")
+            catalysts = 0.0
             missing_blocks += 1
         else:
-            sentiment = await self._score_sentiment(ticker)
+            catalysts = await self._score_catalysts(ticker)
 
-        total_score = quality + stability + valuation + sentiment
+        # --- Financial Health score (max 15) — deleveraging focus ---
+        fin_health, fh_missing = self._score_financial_health(fund_result, warnings)
+        if fh_missing:
+            missing_blocks += 1
+
+        total_score = valuation + quality + catalysts + fin_health
 
         # Confidence: 1.0 base, reduced proportionally per missing block
         confidence = max(0.0, 1.0 - (missing_blocks / total_blocks) * 0.25)
 
         # Signal classification
-        if total_score >= 75.0:
+        if total_score >= 70.0:
             signal = "Bullish"
-        elif total_score >= 50.0:
+        elif total_score >= 40.0:
             signal = "Neutral"
         else:
             signal = "Bearish"
 
         rationale = (
-            f"Elvis Marlamov analysis for {ticker}: "
-            f"Quality={quality:.1f}/{self._MAX_QUALITY}, "
-            f"Stability={stability:.1f}/{self._MAX_STABILITY}, "
+            f"Elvis Marlamov 'Future Blue Chips' analysis for {ticker}: "
             f"Valuation={valuation:.1f}/{self._MAX_VALUATION}, "
-            f"Sentiment={sentiment:.1f}/{self._MAX_SENTIMENT}"
+            f"Quality={quality:.1f}/{self._MAX_QUALITY}, "
+            f"Catalysts={catalysts:.1f}/{self._MAX_CATALYSTS}, "
+            f"Financial Health={fin_health:.1f}/{self._MAX_FINANCIAL_HEALTH}"
         )
 
         return AgentResult(
@@ -107,139 +144,93 @@ class ElvisMarlamovAgent:
             confidence=round(confidence, 2),
             rationale=rationale,
             breakdown={
-                "quality": quality,
-                "stability": stability,
                 "valuation": valuation,
-                "sentiment": sentiment,
+                "quality": quality,
+                "catalysts": catalysts,
+                "financial_health": fin_health,
             },
             warnings=warnings,
         )
 
     # ------------------------------------------------------------------
-    # Scoring helpers
+    # Valuation (max 35) — deep value focus
     # ------------------------------------------------------------------
 
-    def _score_quality(
+    def _score_valuation(
         self, fund: FundamentalResult, warnings: list[str],
     ) -> tuple[float, bool]:
-        """Score quality from fundamentals (max 40). Returns (score, is_missing)."""
-        score = 0.0
-        available = 0
-        total_sub = 4  # ROE, ROA, net_margin, gross_margin
+        """Score valuation from fundamentals (max 35).
 
-        roe = fund.profitability.get("roe")
-        roa = fund.profitability.get("roa")
-        net_margin = fund.profitability.get("net_margin")
-        gross_margin = fund.profitability.get("gross_margin")
-
-        if roe is not None:
-            available += 1
-            # ROE > 15% is good, scale to 10 points
-            score += min(10.0, max(0.0, roe / 0.15) * 10.0)
-        if roa is not None:
-            available += 1
-            score += min(10.0, max(0.0, roa / 0.10) * 10.0)
-        if net_margin is not None:
-            available += 1
-            score += min(10.0, max(0.0, net_margin / 0.20) * 10.0)
-        if gross_margin is not None:
-            available += 1
-            score += min(10.0, max(0.0, gross_margin / 0.40) * 10.0)
-
-        if available == 0:
-            warnings.append("No quality metrics available")
-            return 0.0, True
-
-        if available < total_sub:
-            warnings.append(f"Missing {total_sub - available} quality sub-metrics")
-
-        return min(self._MAX_QUALITY, score), False
-
-    def _score_stability(
-        self,
-        fund: FundamentalResult,
-        metrics: Any,
-        warnings: list[str],
-    ) -> tuple[float, bool]:
-        """Score stability (max 20). Returns (score, is_missing)."""
-        score = 0.0
-        available = 0
-
-        debt_to_equity = fund.stability.get("debt_to_equity")
-        current_ratio = fund.stability.get("current_ratio")
-
-        if debt_to_equity is not None:
-            available += 1
-            # D/E < 0.5 is excellent (10 pts), > 2.0 is bad (0 pts)
-            if debt_to_equity <= 0.5:
-                score += 10.0
-            elif debt_to_equity <= 1.0:
-                score += 7.0
-            elif debt_to_equity <= 2.0:
-                score += 3.0
-            # else 0
-
-        if current_ratio is not None:
-            available += 1
-            # CR > 2.0 is excellent (10 pts), < 1.0 is bad (0 pts)
-            if current_ratio >= 2.0:
-                score += 10.0
-            elif current_ratio >= 1.5:
-                score += 7.0
-            elif current_ratio >= 1.0:
-                score += 4.0
-            # else 0
-
-        if available == 0:
-            warnings.append("No stability metrics available")
-            return 0.0, True
-
-        return min(self._MAX_STABILITY, score), False
-
-    def _score_valuation(
-        self,
-        fund: FundamentalResult,
-        metrics: Any,
-        warnings: list[str],
-    ) -> tuple[float, bool]:
-        """Score valuation (max 30). Returns (score, is_missing)."""
+        Elvis prizes very low multiples: P/E under 5, P/BV below book,
+        low EV/EBITDA, and generous dividend yield.
+        """
         score = 0.0
         available = 0
 
         pe = fund.valuation.get("pe_ratio")
         pb = fund.valuation.get("pb_ratio")
+        ev_ebitda = fund.valuation.get("ev_ebitda")
+        div_yield = fund.valuation.get("dividend_yield")
         fcf_yield = fund.valuation.get("fcf_yield")
 
+        # P/E — deeply undervalued preferred (max 10 pts)
         if pe is not None:
             available += 1
-            # P/E < 15 is great (15 pts), 15-25 is ok, > 40 is bad
-            if pe <= 0:
-                score += 0.0  # negative earnings
-            elif pe <= 15:
-                score += 15.0
-            elif pe <= 25:
-                score += 10.0
-            elif pe <= 40:
-                score += 5.0
-            # else 0
+            if pe > 0:
+                if pe <= 5:
+                    score += 10.0
+                elif pe <= 10:
+                    score += 7.0
+                elif pe <= 20:
+                    score += 4.0
+                elif pe <= 30:
+                    score += 2.0
 
+        # P/BV — below book value is ideal (max 8 pts)
         if pb is not None:
             available += 1
-            if pb <= 1.5:
-                score += 10.0
+            if pb <= 0.7:
+                score += 8.0
+            elif pb <= 1.0:
+                score += 6.0
+            elif pb <= 1.5:
+                score += 4.0
             elif pb <= 3.0:
-                score += 7.0
-            elif pb <= 5.0:
-                score += 3.0
-            # else 0
+                score += 2.0
 
+        # EV/EBITDA (max 7 pts)
+        if ev_ebitda is not None and ev_ebitda > 0:
+            available += 1
+            if ev_ebitda <= 5:
+                score += 7.0
+            elif ev_ebitda <= 8:
+                score += 5.0
+            elif ev_ebitda <= 12:
+                score += 3.0
+            elif ev_ebitda <= 20:
+                score += 1.0
+
+        # Dividend yield (max 6 pts)
+        if div_yield is not None:
+            available += 1
+            if div_yield >= 0.08:
+                score += 6.0
+            elif div_yield >= 0.05:
+                score += 4.0
+            elif div_yield >= 0.03:
+                score += 3.0
+            elif div_yield >= 0.01:
+                score += 1.0
+
+        # FCF yield (max 4 pts)
         if fcf_yield is not None:
             available += 1
-            # FCF yield > 5% is great
-            if fcf_yield >= 0.05:
-                score += 5.0
-            elif fcf_yield >= 0.03:
+            if fcf_yield >= 0.10:
+                score += 4.0
+            elif fcf_yield >= 0.05:
                 score += 3.0
+            elif fcf_yield >= 0.03:
+                score += 2.0
             elif fcf_yield > 0:
                 score += 1.0
 
@@ -249,33 +240,153 @@ class ElvisMarlamovAgent:
 
         return min(self._MAX_VALUATION, score), False
 
-    async def _score_sentiment(self, ticker: str) -> float:
-        """Score sentiment from search results (max 10)."""
+    # ------------------------------------------------------------------
+    # Quality (max 25)
+    # ------------------------------------------------------------------
+
+    def _score_quality(
+        self, fund: FundamentalResult, warnings: list[str],
+    ) -> tuple[float, bool]:
+        """Score business quality (max 25)."""
+        score = 0.0
+        available = 0
+
+        roe = fund.profitability.get("roe")
+        net_margin = fund.profitability.get("net_margin")
+        gross_margin = fund.profitability.get("gross_margin")
+
+        # ROE (max 10 pts)
+        if roe is not None and roe > 0:
+            available += 1
+            if roe >= 0.20:
+                score += 10.0
+            elif roe >= 0.15:
+                score += 7.0
+            elif roe >= 0.10:
+                score += 4.0
+            elif roe >= 0.05:
+                score += 2.0
+
+        # Net margin (max 8 pts)
+        if net_margin is not None and net_margin > 0:
+            available += 1
+            if net_margin >= 0.20:
+                score += 8.0
+            elif net_margin >= 0.10:
+                score += 5.0
+            elif net_margin >= 0.05:
+                score += 3.0
+            elif net_margin > 0:
+                score += 1.0
+
+        # Gross margin (max 7 pts)
+        if gross_margin is not None and gross_margin > 0:
+            available += 1
+            if gross_margin >= 0.40:
+                score += 7.0
+            elif gross_margin >= 0.25:
+                score += 4.0
+            elif gross_margin >= 0.15:
+                score += 2.0
+
+        if available == 0:
+            warnings.append("No quality metrics available")
+            return 0.0, True
+
+        return min(self._MAX_QUALITY, score), False
+
+    # ------------------------------------------------------------------
+    # Catalysts (max 25) — corporate event detection
+    # ------------------------------------------------------------------
+
+    async def _score_catalysts(self, ticker: str) -> float:
+        """Score catalyst potential via search for corporate events (max 25).
+
+        Elvis's main edge: detecting M&A, reorganizations, index inclusions,
+        strategic investor moves, and buybacks before the crowd.
+        """
         if self._search is None:
             return 0.0
 
-        results = await self._search.search(f"{ticker} stock analysis", max_results=5)
+        results = await self._search.search(
+            f"{ticker} acquisition merger buyback dividend restructuring",
+            max_results=5,
+        )
         if not results:
-            return 5.0  # neutral when no results
-
-        positive_keywords = {"upgrade", "buy", "strong", "surge", "beat", "record", "growth"}
-        negative_keywords = {"downgrade", "sell", "weak", "crash", "miss", "decline", "loss"}
+            return 12.5  # neutral when no results
 
         positive_count = 0
         negative_count = 0
 
         for r in results:
             text = (r.title + " " + r.snippet).lower()
-            for kw in positive_keywords:
+            for kw in _POSITIVE_CATALYSTS:
                 if kw in text:
                     positive_count += 1
-            for kw in negative_keywords:
+            for kw in _NEGATIVE_CATALYSTS:
                 if kw in text:
                     negative_count += 1
 
         total = positive_count + negative_count
         if total == 0:
-            return 5.0  # neutral
+            return 12.5  # neutral
 
-        sentiment_ratio = positive_count / total
-        return min(self._MAX_SENTIMENT, sentiment_ratio * self._MAX_SENTIMENT)
+        ratio = positive_count / total
+        return min(self._MAX_CATALYSTS, ratio * self._MAX_CATALYSTS)
+
+    # ------------------------------------------------------------------
+    # Financial Health (max 15) — deleveraging focus
+    # ------------------------------------------------------------------
+
+    def _score_financial_health(
+        self, fund: FundamentalResult, warnings: list[str],
+    ) -> tuple[float, bool]:
+        """Score financial health (max 15).
+
+        Elvis watches for deleveraging: companies actively reducing debt
+        are more attractive.
+        """
+        score = 0.0
+        available = 0
+
+        de = fund.stability.get("debt_to_equity")
+        cr = fund.stability.get("current_ratio")
+        ic = fund.stability.get("interest_coverage")
+
+        # D/E — lower is better (max 8 pts)
+        if de is not None:
+            available += 1
+            if de <= 0.3:
+                score += 8.0
+            elif de <= 0.5:
+                score += 6.0
+            elif de <= 1.0:
+                score += 4.0
+            elif de <= 2.0:
+                score += 2.0
+
+        # Current ratio (max 4 pts)
+        if cr is not None:
+            available += 1
+            if cr >= 2.0:
+                score += 4.0
+            elif cr >= 1.5:
+                score += 3.0
+            elif cr >= 1.0:
+                score += 2.0
+
+        # Interest coverage (max 3 pts)
+        if ic is not None and ic > 0:
+            available += 1
+            if ic >= 10.0:
+                score += 3.0
+            elif ic >= 5.0:
+                score += 2.0
+            elif ic >= 2.0:
+                score += 1.0
+
+        if available == 0:
+            warnings.append("No financial health metrics available")
+            return 0.0, True
+
+        return min(self._MAX_FINANCIAL_HEALTH, score), False

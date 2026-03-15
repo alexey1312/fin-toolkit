@@ -14,7 +14,8 @@ from fin_toolkit.models.results import AgentResult, SearchResult
 # Mock helpers
 # ---------------------------------------------------------------------------
 
-def _make_prices(ticker: str = "AAPL", count: int = 60, base: float = 150.0) -> PriceData:
+
+def _make_prices(ticker: str = "VALUE", count: int = 60, base: float = 150.0) -> PriceData:
     """Create synthetic price data with upward trend."""
     return PriceData(
         ticker=ticker,
@@ -33,43 +34,45 @@ def _make_prices(ticker: str = "AAPL", count: int = 60, base: float = 150.0) -> 
     )
 
 
-def _make_strong_financials(ticker: str = "AAPL") -> FinancialStatements:
+def _make_value_financials(ticker: str = "VALUE") -> FinancialStatements:
+    """Deep value company with solid fundamentals — Elvis's ideal pick."""
     return FinancialStatements(
         ticker=ticker,
         income_statement={
-            "revenue": 400_000_000_000,
-            "net_income": 100_000_000_000,
-            "gross_profit": 170_000_000_000,
-            "operating_income": 120_000_000_000,
-            "interest_expense": 4_000_000_000,
-            "ebitda": 135_000_000_000,
+            "revenue": 100_000_000_000,
+            "net_income": 25_000_000_000,
+            "gross_profit": 45_000_000_000,
+            "operating_income": 30_000_000_000,
+            "interest_expense": 1_000_000_000,
+            "ebitda": 35_000_000_000,
         },
         balance_sheet={
-            "total_assets": 350_000_000_000,
-            "total_equity": 100_000_000_000,
-            "total_debt": 50_000_000_000,
-            "current_assets": 160_000_000_000,
-            "current_liabilities": 80_000_000_000,
-            "invested_capital": 180_000_000_000,
-            "enterprise_value": 3_000_000_000_000,
+            "total_assets": 200_000_000_000,
+            "total_equity": 120_000_000_000,
+            "total_debt": 40_000_000_000,
+            "current_assets": 80_000_000_000,
+            "current_liabilities": 35_000_000_000,
+            "invested_capital": 160_000_000_000,
         },
         cash_flow={
-            "operating_cash_flow": 115_000_000_000,
-            "capital_expenditures": 11_000_000_000,
+            "operating_cash_flow": 28_000_000_000,
+            "capital_expenditures": 5_000_000_000,
         },
     )
 
 
-def _make_strong_metrics(ticker: str = "AAPL") -> KeyMetrics:
+def _make_value_metrics(ticker: str = "VALUE") -> KeyMetrics:
+    """Deep value metrics — low multiples, solid dividend."""
     return KeyMetrics(
         ticker=ticker,
-        pe_ratio=15.0,  # low P/E = good value
-        pb_ratio=3.0,
-        market_cap=3_000_000_000_000,
-        dividend_yield=0.02,
-        roe=1.0,  # 100% ROE = excellent
-        roa=0.28,
-        debt_to_equity=0.5,  # low D/E = stable
+        pe_ratio=4.0,
+        pb_ratio=0.8,
+        market_cap=100_000_000_000,
+        dividend_yield=0.07,
+        roe=0.21,
+        roa=0.125,
+        debt_to_equity=0.33,
+        enterprise_value=130_000_000_000,
     )
 
 
@@ -113,6 +116,33 @@ def _make_weak_metrics(ticker: str = "BAD") -> KeyMetrics:
     )
 
 
+def _make_sparse_financials(ticker: str = "SPARSE") -> FinancialStatements:
+    """Financials with some data for margin computation."""
+    return FinancialStatements(
+        ticker=ticker,
+        income_statement={
+            "revenue": 400_000_000_000,
+            "net_income": 100_000_000_000,
+            "gross_profit": 170_000_000_000,
+            "operating_income": 120_000_000_000,
+            "interest_expense": 4_000_000_000,
+            "ebitda": 135_000_000_000,
+        },
+        balance_sheet={
+            "total_assets": 350_000_000_000,
+            "total_equity": 100_000_000_000,
+            "total_debt": 50_000_000_000,
+            "current_assets": 160_000_000_000,
+            "current_liabilities": 80_000_000_000,
+            "invested_capital": 180_000_000_000,
+        },
+        cash_flow={
+            "operating_cash_flow": 115_000_000_000,
+            "capital_expenditures": 11_000_000_000,
+        },
+    )
+
+
 class MockDataProvider:
     """Mock data provider returning configurable data."""
 
@@ -123,8 +153,8 @@ class MockDataProvider:
         metrics: KeyMetrics | None = None,
     ) -> None:
         self._prices = prices or _make_prices()
-        self._financials = financials or _make_strong_financials()
-        self._metrics = metrics or _make_strong_metrics()
+        self._financials = financials or _make_value_financials()
+        self._metrics = metrics or _make_value_metrics()
 
     async def get_prices(self, ticker: str, start: str, end: str) -> PriceData:
         return self._prices
@@ -136,21 +166,21 @@ class MockDataProvider:
         return self._metrics
 
 
-class MockSearchProvider:
-    """Mock search provider returning positive sentiment results."""
+class MockCatalystSearchProvider:
+    """Mock search returning M&A and dividend catalyst results."""
 
     def __init__(self, results: list[SearchResult] | None = None) -> None:
         self._results = results if results is not None else [
             SearchResult(
-                title="Stock surges on strong earnings",
+                title="Company announces major acquisition deal",
                 url="https://example.com/1",
-                snippet="The company reported record earnings, exceeding expectations.",
+                snippet="Strategic acquisition expected to drive growth.",
                 published_date="2024-01-15",
             ),
             SearchResult(
-                title="Analysts upgrade stock to buy",
+                title="Board approves dividend increase and buyback",
                 url="https://example.com/2",
-                snippet="Multiple analysts have upgraded their rating to buy.",
+                snippet="Shareholders to benefit from repurchase program.",
                 published_date="2024-01-14",
             ),
         ]
@@ -163,19 +193,20 @@ class MockSearchProvider:
 # Tests: scoring blocks
 # ---------------------------------------------------------------------------
 
+
 async def test_scoring_blocks_present() -> None:
-    """Result breakdown has quality, stability, valuation, sentiment keys."""
+    """Result breakdown has valuation, quality, catalysts, financial_health keys."""
     agent = ElvisMarlamovAgent(
         data_provider=MockDataProvider(),
         technical=TechnicalAnalyzer(),
         fundamental=FundamentalAnalyzer(),
-        search=MockSearchProvider(),
+        search=MockCatalystSearchProvider(),
     )
-    result = await agent.analyze("AAPL")
-    assert "quality" in result.breakdown
-    assert "stability" in result.breakdown
+    result = await agent.analyze("VALUE")
     assert "valuation" in result.breakdown
-    assert "sentiment" in result.breakdown
+    assert "quality" in result.breakdown
+    assert "catalysts" in result.breakdown
+    assert "financial_health" in result.breakdown
 
 
 async def test_scoring_block_maximums() -> None:
@@ -184,39 +215,41 @@ async def test_scoring_block_maximums() -> None:
         data_provider=MockDataProvider(),
         technical=TechnicalAnalyzer(),
         fundamental=FundamentalAnalyzer(),
-        search=MockSearchProvider(),
+        search=MockCatalystSearchProvider(),
     )
-    result = await agent.analyze("AAPL")
-    assert result.breakdown["quality"] <= 40.0
-    assert result.breakdown["stability"] <= 20.0
-    assert result.breakdown["valuation"] <= 30.0
-    assert result.breakdown["sentiment"] <= 10.0
+    result = await agent.analyze("VALUE")
+    assert result.breakdown["valuation"] <= 35.0
+    assert result.breakdown["quality"] <= 25.0
+    assert result.breakdown["catalysts"] <= 25.0
+    assert result.breakdown["financial_health"] <= 15.0
 
 
 # ---------------------------------------------------------------------------
-# Tests: strong stock → Bullish
+# Tests: deep value stock → Bullish
 # ---------------------------------------------------------------------------
 
-async def test_strong_stock_bullish() -> None:
-    """Strong fundamentals, good valuation, positive sentiment → Bullish (>=75)."""
+
+async def test_value_stock_bullish() -> None:
+    """Deep value stock with catalysts → Bullish (>=70)."""
     agent = ElvisMarlamovAgent(
         data_provider=MockDataProvider(),
         technical=TechnicalAnalyzer(),
         fundamental=FundamentalAnalyzer(),
-        search=MockSearchProvider(),
+        search=MockCatalystSearchProvider(),
     )
-    result = await agent.analyze("AAPL")
+    result = await agent.analyze("VALUE")
     assert isinstance(result, AgentResult)
     assert result.signal == "Bullish"
-    assert result.score >= 75.0
+    assert result.score >= 70.0
 
 
 # ---------------------------------------------------------------------------
 # Tests: weak stock → Bearish
 # ---------------------------------------------------------------------------
 
+
 async def test_weak_stock_bearish() -> None:
-    """Weak fundamentals, bad valuation, no sentiment → Bearish (<50)."""
+    """Weak fundamentals, high leverage, no catalysts → Bearish (<40)."""
     agent = ElvisMarlamovAgent(
         data_provider=MockDataProvider(
             prices=_make_prices("BAD", base=10.0),
@@ -228,34 +261,36 @@ async def test_weak_stock_bearish() -> None:
     )
     result = await agent.analyze("BAD")
     assert result.signal == "Bearish"
-    assert result.score < 50.0
+    assert result.score < 40.0
 
 
 # ---------------------------------------------------------------------------
-# Tests: without search → sentiment=0 + warning
+# Tests: without search → catalysts=0 + warning
 # ---------------------------------------------------------------------------
 
-async def test_no_search_provider_sentiment_zero() -> None:
-    """Without SearchProvider, sentiment=0 and a warning is emitted."""
+
+async def test_no_search_provider_catalysts_zero() -> None:
+    """Without SearchProvider, catalysts=0 and a warning is emitted."""
     agent = ElvisMarlamovAgent(
         data_provider=MockDataProvider(),
         technical=TechnicalAnalyzer(),
         fundamental=FundamentalAnalyzer(),
         search=None,
     )
-    result = await agent.analyze("AAPL")
-    assert result.breakdown["sentiment"] == 0.0
-    assert any("sentiment" in w.lower() or "search" in w.lower() for w in result.warnings)
+    result = await agent.analyze("VALUE")
+    assert result.breakdown["catalysts"] == 0.0
+    assert any("catalyst" in w.lower() or "search" in w.lower() for w in result.warnings)
 
 
 # ---------------------------------------------------------------------------
 # Tests: missing metrics → confidence reduced + warning
 # ---------------------------------------------------------------------------
 
+
 async def test_missing_metrics_reduces_confidence() -> None:
     """When key metrics are None, confidence is reduced and warnings are emitted."""
     sparse_metrics = KeyMetrics(
-        ticker="AAPL",
+        ticker="SPARSE",
         pe_ratio=None,
         pb_ratio=None,
         market_cap=None,
@@ -265,18 +300,70 @@ async def test_missing_metrics_reduces_confidence() -> None:
         debt_to_equity=None,
     )
     agent = ElvisMarlamovAgent(
-        data_provider=MockDataProvider(metrics=sparse_metrics),
+        data_provider=MockDataProvider(
+            financials=_make_sparse_financials(),
+            metrics=sparse_metrics,
+        ),
         technical=TechnicalAnalyzer(),
         fundamental=FundamentalAnalyzer(),
     )
-    result = await agent.analyze("AAPL")
+    result = await agent.analyze("SPARSE")
     assert result.confidence < 1.0
     assert len(result.warnings) > 0
 
 
 # ---------------------------------------------------------------------------
+# Tests: negative catalyst search results lower score
+# ---------------------------------------------------------------------------
+
+
+async def test_negative_catalysts_reduce_score() -> None:
+    """Negative corporate events should lower the catalyst score."""
+    negative_results = [
+        SearchResult(
+            title="Company faces bankruptcy proceedings",
+            url="https://example.com/1",
+            snippet="Investigation reveals potential fraud in financial statements.",
+            published_date="2024-01-15",
+        ),
+        SearchResult(
+            title="New sanctions imposed on the company",
+            url="https://example.com/2",
+            snippet="Stock sell-off continues after downgrade.",
+            published_date="2024-01-14",
+        ),
+    ]
+    agent = ElvisMarlamovAgent(
+        data_provider=MockDataProvider(),
+        technical=TechnicalAnalyzer(),
+        fundamental=FundamentalAnalyzer(),
+        search=MockCatalystSearchProvider(results=negative_results),
+    )
+    result = await agent.analyze("VALUE")
+    # Negative catalysts → low catalyst score
+    assert result.breakdown["catalysts"] < 12.5  # below neutral
+
+
+# ---------------------------------------------------------------------------
+# Tests: rationale mentions methodology
+# ---------------------------------------------------------------------------
+
+
+async def test_rationale_mentions_future_blue_chips() -> None:
+    """Rationale should reference Elvis's 'Future Blue Chips' methodology."""
+    agent = ElvisMarlamovAgent(
+        data_provider=MockDataProvider(),
+        technical=TechnicalAnalyzer(),
+        fundamental=FundamentalAnalyzer(),
+    )
+    result = await agent.analyze("VALUE")
+    assert "Future Blue Chips" in result.rationale
+
+
+# ---------------------------------------------------------------------------
 # Tests: protocol compliance
 # ---------------------------------------------------------------------------
+
 
 def test_elvis_satisfies_protocol() -> None:
     """ElvisMarlamovAgent satisfies the AnalysisAgent protocol."""
