@@ -52,13 +52,15 @@ New providers/agents implement the protocol; no base class inheritance needed.
 
 ### Analysis agents
 
-- `elvis_marlamov` — fundamentals + sentiment scoring (quality/stability/valuation/sentiment)
-- `warren_buffett` — value investing (margin of safety/durable advantage/management quality)
-- `ben_graham` — deep value (net-net value/earnings stability/financial strength)
-- `charlie_munger` — wonderful business at fair price (business quality/fair price/financial fortress)
-- `cathie_wood` — innovation & growth (growth signals/innovation premium/market position)
-- `peter_lynch` — GARP (PEG value/earnings quality/common sense)
+- `elvis_marlamov` — 'Future Blue Chips' deep value + catalysts (valuation/quality/catalysts/financial_health). Uses `SearchProvider` for M&A/corporate event detection with bilingual EN/RU keywords
+- `warren_buffett` — value investing with ROIC moat evidence (margin_of_safety/durable_advantage/management_quality)
+- `ben_graham` — defensive value with Graham Number P/E×P/B<22.5 (net_net_value/earnings_stability/financial_strength)
+- `charlie_munger` — wonderful business at fair price, ROIC-first (business_quality/fair_price/financial_fortress)
+- `cathie_wood` — disruptive innovation, tolerates high P/E, rewards zero dividends (growth_signals/innovation_premium/market_position)
+- `peter_lynch` — GARP with dividend-adjusted PEG (peg_value/earnings_quality/common_sense)
 - New agents: implement `AnalysisAgent` protocol, add to registry `factories` dict + `_AGENT_FACTORIES`, list in config `agents.active`
+- Agent scoring: each block has sub-metrics whose max sum may exceed block MAX; `min(MAX, score)` caps the block. This allows adding metrics without redistribution — preserve block names to avoid breaking tests.
+- Available FundamentalResult metrics: profitability (roe, roa, roic, net_margin, gross_margin), valuation (pe_ratio, pb_ratio, ev_ebitda, fcf_yield, dividend_yield), stability (debt_to_equity, current_ratio, interest_coverage)
 
 ### Exception hierarchy
 
