@@ -127,6 +127,25 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Classification heuristic: counts overlapping field names to assign tables to income/balance/cashflow
 - Exposed as MCP tool `parse_report(source, ticker)`
 
+### SmartLab provider
+
+- Scraper for `smart-lab.ru` — Russian market fundamentals (P/E, P/B, EV/EBITDA, ROE) + IFRS financial statements
+- `get_metrics`: parses `/q/shares_fundamental/` table (one page = all MOEX tickers)
+- `get_financials`: parses `/q/{TICKER}/f/y/MSFO/` per-ticker page (income/balance/cashflow + history)
+- `get_prices`: not supported — use MOEX provider for prices
+- Values in tables are in млрд руб — multiply by `1e9` to convert to absolute; shares in млн → `1e6`
+- No API, no auth — server-rendered HTML, `httpx` + `beautifulsoup4`
+- Rate limit: polite 5 req/min to avoid blocks
+- SmartLab field names use `field=` attribute on `<tr>` tags (e.g. `field="revenue"`, `field="p_e"`)
+- Banks have different fields (e.g. `bank_assets` instead of `assets`, `capital` instead of `net_assets`)
+
+### Russian market provider strategy
+
+- Prices: MOEX ISS (`provider="moex"`) — always use for SBER, GAZP, LKOH etc.
+- Fundamentals (P/E, ROE, financials): SmartLab (`provider="smartlab"`) — scrapes smart-lab.ru
+- Yahoo Finance requires `.ME` suffix for Moscow Exchange tickers (e.g. `SBER.ME`)
+- `screen_stocks(market="moex")` fetches tickers from MOEX ISS, metrics from SmartLab via fallback chain
+
 ### Investment idea & screening layer
 
 - `analysis/idea.py` — pure functions (no async/IO): `compute_cagr`, `compute_fcf_waterfall`, `compute_scenarios`, `classify_catalysts`, `detect_risks`

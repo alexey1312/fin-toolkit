@@ -128,10 +128,13 @@ async def get_stock_data(
 ) -> str:
     """Get historical stock price data for a ticker.
 
+    For Russian tickers (SBER, GAZP, LKOH), use provider="moex".
+    Yahoo Finance requires ".ME" suffix for Moscow Exchange tickers.
+
     Args:
-        ticker: Stock ticker symbol (e.g. AAPL, MSFT).
+        ticker: Stock ticker symbol (e.g. AAPL, MSFT, SBER).
         period: Time period - 1m, 3m, 6m, 1y, 2y, 5y.
-        provider: Force a specific data provider (optional).
+        provider: Force a specific data provider (e.g. "moex" for Russian stocks).
         format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
@@ -575,10 +578,16 @@ async def screen_stocks(
     """Screen stocks by quick valuation score and optionally run consensus on top candidates.
 
     Provide either an explicit list of tickers or a market name to auto-fetch.
+    Scoring uses P/E, P/B, EV/EBITDA, FCF yield, D/E, dividend yield, ROE.
+
+    Note: MOEX ISS only provides prices and market cap — no P/E, P/B, ROE.
+    Russian tickers screened via MOEX will score 0. Use Yahoo with ".ME" suffix
+    (e.g. "SBER.ME") for fundamental metrics, or parse_report for IFRS data.
 
     Args:
         tickers: Explicit list of ticker symbols to screen.
-        market: Market to auto-fetch tickers from ("moex", "kase", "sp500").
+        market: Market to auto-fetch tickers ("moex" or "kase"). MOEX auto-fetches
+            all TQBR tickers but metrics will be limited (prices/market cap only).
         top_n: How many top candidates to run full consensus on.
         format: Response format - "toon" (default, token-efficient) or "json".
     """
@@ -661,8 +670,12 @@ async def generate_investment_idea(
     FCF waterfall, scenario valuations, catalysts, and risks into a single report.
     Default output is an interactive HTML file with Plotly charts.
 
+    Best results for US tickers (full fundamentals via Yahoo/EDGAR).
+    For Russian tickers: use parse_report first to load IFRS data, then
+    generate the idea. Without parsed reports, FCF/scenarios will be empty.
+
     Args:
-        ticker: Stock ticker symbol.
+        ticker: Stock ticker symbol (e.g. AAPL, INTC, SBER.ME).
         period: Time period for price data (1m, 3m, 6m, 1y, 2y, 5y).
         format: Output format - "html" (default, opens in browser), "toon", or "json".
     """

@@ -89,6 +89,11 @@ def _serve() -> None:
 
         providers["moex"] = MOEXProvider()
 
+    if "smartlab" in available:
+        from fin_toolkit.providers.smartlab import SmartLabProvider
+
+        providers["smartlab"] = SmartLabProvider()
+
     if "financialdatasets" in available:
         from fin_toolkit.providers.financialdatasets import FinancialDatasetsProvider
 
@@ -243,7 +248,7 @@ def _status() -> None:
 
     # Data providers
     available_data = set(config.available_providers())
-    all_data = ["yahoo", "kase", "fmp", "financialdatasets"]
+    all_data = ["yahoo", "kase", "moex", "smartlab", "fmp", "financialdatasets"]
     print("\nData providers:")
     for p in all_data:
         mark = "✓" if p in available_data else "✗"

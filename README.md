@@ -59,10 +59,10 @@ All MCP tools work out of the box — no API keys required (Yahoo Finance + Duck
 │  Yahoo Finance   │ │  DuckDuckGo (free)  │ │  Elvis Marlamov        │
 │  KASE (JSON API) │ │  SearXNG            │ │  Warren Buffett        │
 │  MOEX (aiomoex)  │ │  Google (Gemini)    │ │  Ben Graham            │
-│  FinDatasets.ai  │ │  Perplexity         │ │  Charlie Munger        │
-│  EDGAR (SEC)     │ │  Tavily             │ │  Cathie Wood           │
-│  PDF Reports     │ │  Brave              │ │  Peter Lynch           │
-│                  │ │  Serper             │ │                        │
+│  SmartLab (RU)   │ │  Perplexity         │ │  Charlie Munger        │
+│  FinDatasets.ai  │ │  Tavily             │ │  Cathie Wood           │
+│  EDGAR (SEC)     │ │  Brave              │ │  Peter Lynch           │
+│  PDF Reports     │ │  Serper             │ │                        │
 │                  │ │  Exa                │ │                        │
 └──────────────────┘ └─────────────────────┘ └────────────────────────┘
 ```
@@ -213,7 +213,8 @@ Works with English and Russian (IFRS/МСФО) reports.
 |----------|---------|---------|-------|
 | Yahoo Finance | Global | No | Default, free |
 | KASE | Kazakhstan | No | JSON API (`kase.kz/api/*`), realtime data + Yahoo `.ME` fallback for OHLCV |
-| MOEX | Russia | No | Via `aiomoex` package |
+| MOEX | Russia | No | Prices via `aiomoex` package (ISS REST API) |
+| SmartLab | Russia | No | P/E, P/B, EV/EBITDA, ROE + IFRS financials (scraper, `smart-lab.ru`) |
 | Financial Datasets | US | Yes (`FINANCIAL_DATASETS_API_KEY`) | SEC EDGAR data, 17k+ tickers |
 | EDGAR | US | No | SEC filings via `edgartools` |
 | PDF Reports | Any | No | Parse IFRS/МСФО PDFs via `pdfplumber` |
@@ -243,6 +244,7 @@ fin-toolkit/
     yahoo.py          #   Yahoo Finance (free, no API key)
     kase.py           #   KASE JSON API + Yahoo .ME fallback
     moex.py           #   MOEX via aiomoex
+    smartlab.py       #   SmartLab fundamentals + IFRS (scraper)
     financialdatasets.py#  Financial Datasets REST API
     edgar.py          #   SEC EDGAR filings via edgartools
     pdf_report.py     #   PDF report parser (IFRS/МСФО)
