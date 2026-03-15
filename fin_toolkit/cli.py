@@ -87,28 +87,43 @@ def _serve() -> None:
 
     provider_router = ProviderRouter(config=config, providers=providers)
 
-    # Build search providers
+    # Build search providers (order = fallback priority)
     search_list: list[SearchProvider] = []
     available_search = config.available_search_providers()
+
+    # Key-based providers: import and add if key is available
+    _key_providers: list[tuple[str, str, type]] = []
     if "perplexity" in available_search:
         from fin_toolkit.providers.perplexity import PerplexitySearchProvider
-
-        api_key = config.api_keys.get("perplexity") or os.environ.get(
-            PROVIDER_KEY_MAP.get("perplexity", ""), ""
-        )
-        if api_key:
-            search_list.append(PerplexitySearchProvider(api_key=api_key))
+        _key_providers.append(("perplexity", "perplexity", PerplexitySearchProvider))
+    if "tavily" in available_search:
+        from fin_toolkit.providers.tavily import TavilySearchProvider
+        _key_providers.append(("tavily", "tavily", TavilySearchProvider))
     if "brave" in available_search:
         from fin_toolkit.providers.brave import BraveSearchProvider
+        _key_providers.append(("brave", "brave", BraveSearchProvider))
+    if "serper" in available_search:
+        from fin_toolkit.providers.serper import SerperSearchProvider
+        _key_providers.append(("serper", "serper", SerperSearchProvider))
+    if "exa" in available_search:
+        from fin_toolkit.providers.exa import ExaSearchProvider
+        _key_providers.append(("exa", "exa", ExaSearchProvider))
 
-        api_key = config.api_keys.get("brave") or os.environ.get(
-            PROVIDER_KEY_MAP.get("brave", ""), ""
+    for name, config_key, cls in _key_providers:
+        api_key = config.api_keys.get(config_key) or os.environ.get(
+            PROVIDER_KEY_MAP.get(name, ""), ""
         )
         if api_key:
-            search_list.append(BraveSearchProvider(api_key=api_key))
+            search_list.append(cls(api_key=api_key))
+
+    # DuckDuckGo: always available, no key needed
+    if "duckduckgo" in available_search:
+        from fin_toolkit.providers.duckduckgo import DuckDuckGoSearchProvider
+        search_list.append(DuckDuckGoSearchProvider())
+
+    # SearXNG: self-hosted, no key needed
     if "searxng" in available_search:
         from fin_toolkit.providers.searxng import SearXNGProvider
-
         search_list.append(SearXNGProvider(base_url=config.search.searxng_url))
 
     search_router = SearchRouter(search_list) if search_list else None

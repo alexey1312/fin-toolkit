@@ -14,6 +14,7 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "ddgs>=7.0",
 ]
 
 [project.scripts]
@@ -51,7 +52,7 @@ warn_return_any = true
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
-module = ["ta.*", "yfinance.*", "pandas.*"]
+module = ["ta.*", "yfinance.*", "pandas.*", "duckduckgo_search.*", "ddgs.*"]
 ignore_missing_imports = true
 follow_untyped_imports = true
 
