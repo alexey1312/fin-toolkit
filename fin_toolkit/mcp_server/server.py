@@ -53,7 +53,7 @@ def _period_to_dates(period: str) -> tuple[str, str]:
         "1m": timedelta(days=30),
         "3m": timedelta(days=90),
         "6m": timedelta(days=180),
-        "1y": timedelta(days=365),
+        "1y": timedelta(days=400),
         "2y": timedelta(days=730),
         "5y": timedelta(days=1825),
     }
@@ -281,7 +281,13 @@ async def search_news(
             )
 
         results = await _search_router.search(query, max_results=max_results)
-        return json.dumps({"results": [r.model_dump() for r in results]})
+        data: dict[str, Any] = {"results": [r.model_dump() for r in results]}
+        if not results:
+            data["warning"] = (
+                "Search returned no results. "
+                "All configured providers may be unavailable."
+            )
+        return json.dumps(data)
     except FinToolkitError as exc:
         return _error_response(str(exc))
     except Exception as exc:

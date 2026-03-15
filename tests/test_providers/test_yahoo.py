@@ -95,8 +95,12 @@ class TestYahooFinanceProvider:
 
         assert result.ticker == "AAPL"
         assert result.income_statement is not None
+        assert result.income_statement["revenue"] == 100_000
+        assert result.income_statement["net_income"] == 50_000
         assert result.balance_sheet is not None
+        assert result.balance_sheet["total_assets"] == 500_000
         assert result.cash_flow is not None
+        assert result.cash_flow["operating_cash_flow"] == 80_000
 
     @patch("fin_toolkit.providers.yahoo.yf")
     async def test_get_financials_empty_raises(self, mock_yf: MagicMock) -> None:

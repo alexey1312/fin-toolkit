@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from typing import Any
 
 import yfinance as yf
@@ -10,6 +11,26 @@ import yfinance as yf
 from fin_toolkit.exceptions import TickerNotFoundError
 from fin_toolkit.models.financial import FinancialStatements, KeyMetrics
 from fin_toolkit.models.price_data import PriceData, PricePoint
+
+# Mapping from yfinance field names to normalized keys expected by the analyzer.
+_FIELD_MAP: dict[str, str] = {
+    "Total Revenue": "revenue",
+    "Net Income": "net_income",
+    "Gross Profit": "gross_profit",
+    "Operating Income": "operating_income",
+    "Interest Expense": "interest_expense",
+    "EBITDA": "ebitda",
+    "Total Assets": "total_assets",
+    "Stockholders Equity": "total_equity",
+    "Total Debt": "total_debt",
+    "Current Assets": "current_assets",
+    "Current Liabilities": "current_liabilities",
+    "Invested Capital": "invested_capital",
+    "Enterprise Value": "enterprise_value",
+    "Operating Cash Flow": "operating_cash_flow",
+    "Capital Expenditure": "capital_expenditures",
+    "Free Cash Flow": "free_cash_flow",
+}
 
 
 class YahooFinanceProvider:
@@ -83,8 +104,23 @@ class YahooFinanceProvider:
 
     @staticmethod
     def _df_to_dict(df: Any) -> dict[str, object]:
-        """Convert DataFrame to a nested dict {column: {index: value}}."""
+        """Convert yfinance DataFrame to flat dict with normalized field names.
+
+        Takes the most recent period (first column) and maps yfinance field
+        names to the normalized keys expected by the analyzer.
+        """
+        if df.columns.empty:
+            return {}
+        latest = df.iloc[:, 0]
         result: dict[str, object] = {}
-        for col in df.columns:
-            result[str(col)] = {str(idx): val for idx, val in df[col].items()}
+        for field_name, value in latest.items():
+            key = _FIELD_MAP.get(
+                str(field_name), str(field_name).lower().replace(" ", "_"),
+            )
+            try:
+                fval = float(value)
+                if not math.isnan(fval):
+                    result[key] = fval
+            except (TypeError, ValueError):
+                result[key] = value
         return result

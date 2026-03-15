@@ -375,6 +375,22 @@ class TestSearchNews:
         assert parsed["results"] == []
         assert "warning" in parsed
 
+    async def test_all_providers_fail_returns_warning(self) -> None:
+        """Router configured but all providers fail returns warning."""
+        from fin_toolkit.mcp_server.server import search_news
+
+        mock_search_router = AsyncMock()
+        mock_search_router.search.return_value = []
+
+        with patch(
+            "fin_toolkit.mcp_server.server._search_router", mock_search_router
+        ):
+            result = await search_news("AAPL earnings")
+
+        parsed = json.loads(result)
+        assert parsed["results"] == []
+        assert "warning" in parsed
+
 
 # ---------------------------------------------------------------------------
 # run_agent
