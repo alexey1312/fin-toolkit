@@ -18,6 +18,10 @@ class AgentRegistry:
     _AGENT_FACTORIES: dict[str, str] = {
         "elvis_marlamov": "fin_toolkit.agents.elvis.ElvisMarlamovAgent",
         "warren_buffett": "fin_toolkit.agents.buffett.WarrenBuffettAgent",
+        "ben_graham": "fin_toolkit.agents.graham.BenGrahamAgent",
+        "charlie_munger": "fin_toolkit.agents.munger.CharlieMungerAgent",
+        "cathie_wood": "fin_toolkit.agents.wood.CathieWoodAgent",
+        "peter_lynch": "fin_toolkit.agents.lynch.PeterLynchAgent",
     }
 
     def __init__(
@@ -40,29 +44,37 @@ class AgentRegistry:
         """Instantiate agents listed in config.agents.active."""
         from fin_toolkit.agents.buffett import WarrenBuffettAgent
         from fin_toolkit.agents.elvis import ElvisMarlamovAgent
+        from fin_toolkit.agents.graham import BenGrahamAgent
+        from fin_toolkit.agents.lynch import PeterLynchAgent
+        from fin_toolkit.agents.munger import CharlieMungerAgent
+        from fin_toolkit.agents.wood import CathieWoodAgent
 
-        factories: dict[str, type[ElvisMarlamovAgent | WarrenBuffettAgent]] = {
+        # Agents that accept a search provider
+        search_agents = {"elvis_marlamov"}
+
+        factories: dict[str, type] = {
             "elvis_marlamov": ElvisMarlamovAgent,
             "warren_buffett": WarrenBuffettAgent,
+            "ben_graham": BenGrahamAgent,
+            "charlie_munger": CharlieMungerAgent,
+            "cathie_wood": CathieWoodAgent,
+            "peter_lynch": PeterLynchAgent,
         }
 
         for name in self._config.agents.active:
-            if name not in factories:
+            cls = factories.get(name)
+            if cls is None:
                 continue  # skip unknown agents at load time
-            if name == "elvis_marlamov":
-                agent: AnalysisAgent = ElvisMarlamovAgent(
-                    data_provider=self._data_provider,
-                    technical=self._technical,
-                    fundamental=self._fundamental,
-                    search=self._search,
-                )
-            else:
-                agent = WarrenBuffettAgent(
-                    data_provider=self._data_provider,
-                    technical=self._technical,
-                    fundamental=self._fundamental,
-                )
-            self._agents[name] = agent
+
+            kwargs: dict[str, object] = {
+                "data_provider": self._data_provider,
+                "technical": self._technical,
+                "fundamental": self._fundamental,
+            }
+            if name in search_agents:
+                kwargs["search"] = self._search
+
+            self._agents[name] = cls(**kwargs)
 
     def get_agent(self, name: str) -> AnalysisAgent:
         """Get an agent by name. Raises AgentNotFoundError if not found."""

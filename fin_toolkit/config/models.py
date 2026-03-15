@@ -31,7 +31,16 @@ class SearchConfig(BaseModel):
 class AgentsConfig(BaseModel):
     """Agent configuration."""
 
-    active: list[str] = Field(default_factory=lambda: ["elvis_marlamov", "warren_buffett"])
+    active: list[str] = Field(
+        default_factory=lambda: [
+            "elvis_marlamov",
+            "warren_buffett",
+            "ben_graham",
+            "charlie_munger",
+            "cathie_wood",
+            "peter_lynch",
+        ],
+    )
 
 
 class MarketConfig(BaseModel):

@@ -49,7 +49,11 @@ class MockDataProvider:
 
 def test_load_agents_from_config() -> None:
     """Registry loads agents listed in config.agents.active."""
-    config = ToolkitConfig(agents=AgentsConfig(active=["elvis_marlamov", "warren_buffett"]))
+    all_agents = [
+        "elvis_marlamov", "warren_buffett",
+        "ben_graham", "charlie_munger", "cathie_wood", "peter_lynch",
+    ]
+    config = ToolkitConfig(agents=AgentsConfig(active=all_agents))
     registry = AgentRegistry(
         config=config,
         data_provider=MockDataProvider(),
@@ -57,9 +61,9 @@ def test_load_agents_from_config() -> None:
         fundamental=FundamentalAnalyzer(),
     )
     agents = registry.get_active_agents()
-    assert "elvis_marlamov" in agents
-    assert "warren_buffett" in agents
-    assert len(agents) == 2
+    for name in all_agents:
+        assert name in agents
+    assert len(agents) == len(all_agents)
 
 
 def test_get_agent_returns_instance() -> None:

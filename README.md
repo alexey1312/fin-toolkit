@@ -36,6 +36,10 @@ fin-toolkit/
     protocol.py       #   AnalysisAgent protocol (analyze → AgentResult)
     elvis.py          #   Elvis Marlamov: 100-point scoring (quality/stability/valuation/sentiment)
     buffett.py        #   Warren Buffett: value investing (margin of safety/moat/management)
+    graham.py         #   Ben Graham: deep value (net-net/earnings stability/financial strength)
+    munger.py         #   Charlie Munger: wonderful business at fair price (quality/price/fortress)
+    wood.py           #   Cathie Wood: innovation & growth (growth signals/innovation premium/position)
+    lynch.py          #   Peter Lynch: GARP (PEG value/earnings quality/common sense)
     registry.py       #   AgentRegistry: loads agents from config
   models/             # Pydantic models
     price_data.py     #   PricePoint, PriceData
@@ -108,7 +112,7 @@ Run an AI analysis agent on a ticker.
 
 ```
 ticker: "AAPL"
-agent: "elvis_marlamov"   # or "warren_buffett"
+agent: "elvis_marlamov"   # or warren_buffett, ben_graham, charlie_munger, cathie_wood, peter_lynch
 ```
 
 Returns: signal (Bullish/Neutral/Bearish), score (0-100), confidence (0.0-1.0), rationale, breakdown.
@@ -135,7 +139,7 @@ search:
   searxng_url: http://localhost:8888
 
 agents:
-  active: [elvis_marlamov, warren_buffett]
+  active: [elvis_marlamov, warren_buffett, ben_graham, charlie_munger, cathie_wood, peter_lynch]
 
 markets:
   kz:

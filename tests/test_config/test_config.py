@@ -12,7 +12,14 @@ class TestToolkitConfig:
     def test_defaults(self) -> None:
         config = ToolkitConfig()
         assert config.data.primary_provider == "yahoo"
-        assert config.agents.active == ["elvis_marlamov", "warren_buffett"]
+        assert config.agents.active == [
+            "elvis_marlamov",
+            "warren_buffett",
+            "ben_graham",
+            "charlie_munger",
+            "cathie_wood",
+            "peter_lynch",
+        ]
 
     def test_rate_limit_defaults(self) -> None:
         config = ToolkitConfig()

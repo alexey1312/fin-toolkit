@@ -46,7 +46,11 @@ New providers/agents implement the protocol; no base class inheritance needed.
 
 - `elvis_marlamov` — fundamentals + sentiment scoring (quality/stability/valuation/sentiment)
 - `warren_buffett` — value investing (margin of safety/durable advantage/management quality)
-- New agents: implement `AnalysisAgent` protocol, add to `AgentRegistry._AGENT_FACTORIES` + `_load_agents()`, list in config `agents.active`
+- `ben_graham` — deep value (net-net value/earnings stability/financial strength)
+- `charlie_munger` — wonderful business at fair price (business quality/fair price/financial fortress)
+- `cathie_wood` — innovation & growth (growth signals/innovation premium/market position)
+- `peter_lynch` — GARP (PEG value/earnings quality/common sense)
+- New agents: implement `AnalysisAgent` protocol, add to registry `factories` dict + `_AGENT_FACTORIES`, list in config `agents.active`
 
 ### Exception hierarchy
 
