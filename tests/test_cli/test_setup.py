@@ -29,14 +29,11 @@ class TestSetupCommand:
         mcp_json = project_dir / ".mcp.json"
         assert mcp_json.exists()
         data = json.loads(mcp_json.read_text())
-        assert data == {
-            "mcpServers": {
-                "fin-toolkit": {
-                    "command": "uvx",
-                    "args": ["fin-toolkit", "serve"],
-                }
-            }
-        }
+        entry = data["mcpServers"]["fin-toolkit"]
+        assert entry["command"] == "uv"
+        assert entry["args"][0] == "run"
+        assert "--project" in entry["args"]
+        assert entry["args"][-2:] == ["fin-toolkit", "serve"]
 
         # Also creates default config
         config_file = config_dir / "config.yaml"
