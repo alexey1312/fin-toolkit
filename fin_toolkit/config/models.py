@@ -18,7 +18,9 @@ class DataConfig(BaseModel):
     """Data provider configuration."""
 
     primary_provider: str = "yahoo"
-    fallback_providers: list[str] = Field(default_factory=lambda: ["fmp"])
+    fallback_providers: list[str] = Field(
+        default_factory=lambda: ["smartlab", "moex", "financialdatasets", "edgar"],
+    )
 
 
 class SearchConfig(BaseModel):

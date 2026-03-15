@@ -75,7 +75,7 @@ class YahooFinanceProvider:
     async def get_metrics(self, ticker: str) -> KeyMetrics:
         """Fetch key metrics from Yahoo Finance."""
         info = await asyncio.to_thread(self._fetch_info, ticker)
-        if not info:
+        if not info or info.get("marketCap") is None:
             raise TickerNotFoundError(ticker, provider="yahoo")
 
         return KeyMetrics(
