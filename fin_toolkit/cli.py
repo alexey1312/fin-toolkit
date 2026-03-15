@@ -90,6 +90,14 @@ def _serve() -> None:
     # Build search providers
     search_list: list[SearchProvider] = []
     available_search = config.available_search_providers()
+    if "perplexity" in available_search:
+        from fin_toolkit.providers.perplexity import PerplexitySearchProvider
+
+        api_key = config.api_keys.get("perplexity") or os.environ.get(
+            PROVIDER_KEY_MAP.get("perplexity", ""), ""
+        )
+        if api_key:
+            search_list.append(PerplexitySearchProvider(api_key=api_key))
     if "brave" in available_search:
         from fin_toolkit.providers.brave import BraveSearchProvider
 

@@ -24,7 +24,7 @@ class DataConfig(BaseModel):
 class SearchConfig(BaseModel):
     """Search provider configuration."""
 
-    providers: list[str] = Field(default_factory=lambda: ["brave", "searxng"])
+    providers: list[str] = Field(default_factory=lambda: ["perplexity", "brave", "searxng"])
     searxng_url: str = "http://localhost:8888"
 
 
@@ -71,6 +71,7 @@ KEY_FREE_PROVIDERS = {"yahoo", "kase"}
 PROVIDER_KEY_MAP: dict[str, str] = {
     "fmp": "FMP_API_KEY",
     "brave": "BRAVE_API_KEY",
+    "perplexity": "PERPLEXITY_API_KEY",
 }
 
 # Search providers that need configuration (not API keys)
@@ -111,8 +112,9 @@ class ToolkitConfig(BaseModel):
     def available_search_providers(self) -> list[str]:
         """Return list of available search providers."""
         available: list[str] = []
-        for provider, env_var in PROVIDER_KEY_MAP.items():
-            if provider in ("brave",) and (self.api_keys.get(provider) or os.environ.get(env_var)):
+        for provider in ("perplexity", "brave"):
+            env_var = PROVIDER_KEY_MAP.get(provider, "")
+            if self.api_keys.get(provider) or os.environ.get(env_var):
                 available.append(provider)
         # SearXNG is available if URL is configured
         if self.search.searxng_url:
