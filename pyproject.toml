@@ -50,6 +50,11 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+[[tool.mypy.overrides]]
+module = ["ta.*", "yfinance.*", "pandas.*"]
+ignore_missing_imports = true
+follow_untyped_imports = true
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
