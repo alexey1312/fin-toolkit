@@ -105,3 +105,92 @@ class SearchResult(BaseModel):
     url: str
     snippet: str
     published_date: str | None
+
+
+# ---------------------------------------------------------------------------
+# Investment idea models
+# ---------------------------------------------------------------------------
+
+
+class ScenarioValuation(BaseModel):
+    """Bull/base/bear scenario valuation."""
+
+    label: str  # "bull" | "base" | "bear"
+    forward_ebitda: float | None
+    forward_eps: float | None
+    target_ev_ebitda: float | None
+    target_pe: float | None
+    target_price: float | None
+    upside_pct: float | None
+
+
+class FCFWaterfall(BaseModel):
+    """Free cash flow waterfall decomposition."""
+
+    ebitda: float | None
+    capex: float | None
+    interest_expense: float | None
+    taxes: float | None
+    fcf: float | None
+    shares_outstanding: float | None
+    fcf_per_share: float | None
+
+
+class CatalystItem(BaseModel):
+    """A single catalyst event or driver."""
+
+    category: str  # "m_and_a", "buyback", "restructuring", "index", "strategic"
+    description: str
+    sentiment: str  # "positive" | "negative" | "neutral"
+    source_url: str | None
+
+
+class RiskItem(BaseModel):
+    """A single risk factor."""
+
+    category: str  # "leverage", "liquidity", "regulatory", "esg", "operational", "macro"
+    description: str
+    severity: str  # "high" | "medium" | "low"
+
+
+class InvestmentIdeaResult(BaseModel):
+    """Complete investment idea with all analysis components."""
+
+    ticker: str
+    current_price: float | None
+    consensus: ConsensusResult
+    fundamentals: FundamentalResult
+    catalysts: list[CatalystItem]
+    revenue_cagr_3y: float | None
+    ebitda_cagr_3y: float | None
+    fcf_waterfall: FCFWaterfall
+    scenarios: list[ScenarioValuation]
+    risks: list[RiskItem]
+    technical: TechnicalResult
+    risk: RiskResult
+    price_history: list[dict[str, object]]
+    warnings: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Screening models
+# ---------------------------------------------------------------------------
+
+
+class ScreeningCandidate(BaseModel):
+    """A single screening candidate with scores."""
+
+    ticker: str
+    quick_score: float  # 0-100
+    consensus_score: float | None  # filled for top-N
+    consensus_signal: str | None
+    key_metrics: dict[str, float | None]
+
+
+class ScreeningResult(BaseModel):
+    """Result of stock screening."""
+
+    market: str | None
+    total_scanned: int
+    candidates: list[ScreeningCandidate]
+    warnings: list[str]

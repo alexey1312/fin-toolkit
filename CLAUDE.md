@@ -31,6 +31,9 @@ This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start
 - `enterprise_value` lives in `.info["enterpriseValue"]`, NOT in balance_sheet DataFrame
 - Some fields are NaN for certain tickers (e.g. AAPL has no Interest Expense) — this is a data limitation, not a bug
 - 1 calendar year ≈ 250 trading days; period mapping uses 400 days buffer for 252-window volatility
+- `_df_to_history(df)` in `yahoo.py` converts ALL columns to `list[dict]` for historical trends; columns may be datetime or string (in mocks) — check `hasattr(col, "strftime")`
+- `KeyMetrics` extended fields: `ev_ebitda` (from `info["enterpriseToEbitda"]`), `fcf_yield` (computed: freeCashflow/marketCap), `shares_outstanding`, `current_price`
+- `FinancialStatements` extended: `income_history`, `cash_flow_history` — list of period dicts from all DataFrame columns
 
 ### Protocol-first design
 
@@ -101,6 +104,37 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Field rename mapping in `_FIELD_RENAME`: `net_cash_flow_from_operations` → `operating_cash_flow`, `price_to_earnings_ratio` → `pe_ratio` (via `get_metrics`)
 - US equities only, 17k+ tickers, 30+ years history from SEC EDGAR
 
+### MOEX ISS provider
+
+- Open REST API (`iss.moex.com`), no auth, via `aiomoex` + `aiohttp` (NOT httpx)
+- `get_prices`: daily candles via `aiomoex.get_market_candles()`
+- `get_metrics`: PREVPRICE, ISSUESIZE from `aiomoex.get_board_securities()` — P/E, financials unavailable
+- `get_financials`: returns None (ISS has no financial statements)
+- `list_tickers(board="TQBR")`: fetches all traded SECID from board
+- Board mapping: TQBR (equities, default), TQCB (bonds)
+
+### SEC EDGAR provider
+
+- US financial statements from XBRL via `edgartools` (PyPI, no API key)
+- Only `get_financials` and `get_metrics` — no prices (raises `ProviderUnavailableError`)
+- `from edgar import Company` is lazy-imported inside `_fetch_financials` (runs in thread via `asyncio.to_thread`)
+- `filings.latest()` may return single object or list — use `isinstance(latest, (list, tuple))`
+
+### PDF report parser
+
+- `providers/pdf_report.py`: extracts financial tables from PDF via `pdfplumber`
+- Bilingual field mapping (EN + RU МСФО): "Выручка" → "revenue", "Чистая прибыль" → "net_income"
+- Classification heuristic: counts overlapping field names to assign tables to income/balance/cashflow
+- Exposed as MCP tool `parse_report(source, ticker)`
+
+### Investment idea & screening layer
+
+- `analysis/idea.py` — pure functions (no async/IO): `compute_cagr`, `compute_fcf_waterfall`, `compute_scenarios`, `classify_catalysts`, `detect_risks`
+- `analysis/screening.py` — `compute_quick_score(metrics)`: 0-100 from P/E, P/B, EV/EBITDA, FCF yield, D/E, div yield, ROE
+- `report/html_report.py` — self-contained HTML with Plotly charts (CDN), dark theme, 11 sections
+- MCP tools: `generate_investment_idea` (html/json/toon), `screen_stocks` (two-stage: quick_score → consensus), `parse_report`
+- `generate_investment_idea` default format is `"html"` (not `"toon"`) — opens browser via `webbrowser.open()`
+
 ### KASE provider
 
 - JSON API (`kase.kz/api/*`), no auth, no API key needed
@@ -108,6 +142,8 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Historical OHLCV: delegated to Yahoo Finance via `{ticker}.ME` suffix (KASE API has no history endpoint)
 - `get_metrics()` maps KASE fields (`capit` → `market_cap`, `pe` → `pe_ratio`, etc.); `get_financials()` returns None (no reporting data)
 - `KASEProvider(yahoo=providers.get("yahoo"))` — Yahoo instance passed from `cli.py`
+- Yahoo `.ME` fallback works only for dual-listed KASE+MOEX tickers (KCEL, HSBK); tickers like KZAP (LSE only as KAP.IL) have no MOEX listing — `get_prices` will fail for them
+- `DEFAULT_MARKETS["kz"].tickers` in `config/models.py` controls which tickers route to KASE provider — keep this list updated
 
 ## Testing
 
@@ -120,6 +156,9 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - MCP tool tests that parse responses with `json.loads()` must pass `format="json"` (default is TOON)
 - `_mock_registry_with_agents(dict)` in `test_tools.py` — helper to build mock registry with agents returning given results/exceptions
 - Portfolio pure functions in `test_portfolio.py` are tested without mocks (no I/O); MCP tool tests mock `_agent_registry`, `_provider_router`, `_technical_analyzer`
+- MOEX tests: patch `aiomoex` module AND `aiohttp.ClientSession` context manager
+- EDGAR tests: use `SimpleNamespace` (not MagicMock) for XBRL objects — `float(MagicMock())` silently returns 1.0
+- EDGAR tests: patch `"edgar.Company"` with `create=True` (lazy import inside static method)
 
 ## Code style
 

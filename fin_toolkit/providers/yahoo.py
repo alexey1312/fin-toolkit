@@ -68,6 +68,8 @@ class YahooFinanceProvider:
             income_statement=self._df_to_dict(income) if not income.empty else None,
             balance_sheet=self._df_to_dict(balance) if not balance.empty else None,
             cash_flow=self._df_to_dict(cashflow) if not cashflow.empty else None,
+            income_history=self._df_to_history(income) if not income.empty else None,
+            cash_flow_history=self._df_to_history(cashflow) if not cashflow.empty else None,
         )
 
     async def get_metrics(self, ticker: str) -> KeyMetrics:
@@ -86,6 +88,10 @@ class YahooFinanceProvider:
             roa=info.get("returnOnAssets"),
             debt_to_equity=info.get("debtToEquity"),
             enterprise_value=info.get("enterpriseValue"),
+            ev_ebitda=info.get("enterpriseToEbitda"),
+            fcf_yield=_compute_fcf_yield(info),
+            shares_outstanding=info.get("sharesOutstanding"),
+            current_price=info.get("currentPrice"),
         )
 
     @staticmethod
@@ -125,3 +131,36 @@ class YahooFinanceProvider:
             except (TypeError, ValueError):
                 result[key] = value
         return result
+
+    @staticmethod
+    def _df_to_history(df: Any) -> list[dict[str, object]]:
+        """Convert ALL columns of a yfinance DataFrame to a list of period dicts.
+
+        Each dict has a 'period' key (date string) plus normalized field values.
+        Columns are dates (most recent first); index is field names.
+        """
+        history: list[dict[str, object]] = []
+        for col in df.columns:
+            period_str = col.strftime("%Y-%m-%d") if hasattr(col, "strftime") else str(col)
+            period_data: dict[str, object] = {"period": period_str}
+            for field_name, value in df[col].items():
+                key = _FIELD_MAP.get(
+                    str(field_name), str(field_name).lower().replace(" ", "_"),
+                )
+                try:
+                    fval = float(value)
+                    if not math.isnan(fval):
+                        period_data[key] = fval
+                except (TypeError, ValueError):
+                    period_data[key] = value
+            history.append(period_data)
+        return history
+
+
+def _compute_fcf_yield(info: dict[str, Any]) -> float | None:
+    """Compute FCF yield = freeCashflow / marketCap."""
+    fcf = info.get("freeCashflow")
+    mcap = info.get("marketCap")
+    if fcf is not None and mcap is not None and mcap > 0:
+        return float(fcf) / float(mcap)
+    return None

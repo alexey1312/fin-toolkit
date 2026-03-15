@@ -737,3 +737,189 @@ class TestRunPortfolioAnalysis:
         assert "AAPL" in parsed["recommendations"]
         assert "MSFT" not in parsed["recommendations"]
         assert len(parsed["warnings"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# screen_stocks
+# ---------------------------------------------------------------------------
+
+
+class TestScreenStocks:
+    async def test_screen_with_tickers(self) -> None:
+        from fin_toolkit.mcp_server.server import screen_stocks
+
+        agents = {"buffett": _make_agent_result()}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        mock_router.get_metrics.return_value = _make_metrics()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+        ):
+            result = await screen_stocks(
+                tickers=["AAPL", "MSFT"], top_n=2, format="json",
+            )
+
+        parsed = json.loads(result)
+        assert parsed["total_scanned"] == 2
+        assert len(parsed["candidates"]) == 2
+        for c in parsed["candidates"]:
+            assert "quick_score" in c
+            assert "consensus_score" in c
+
+    async def test_screen_no_tickers_no_market_error(self) -> None:
+        from fin_toolkit.mcp_server.server import screen_stocks
+
+        mock_router = AsyncMock()
+        with patch("fin_toolkit.mcp_server.server._provider_router", mock_router):
+            result = await screen_stocks(format="json")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+
+    async def test_screen_metrics_failure_warning(self) -> None:
+        from fin_toolkit.mcp_server.server import screen_stocks
+
+        mock_router = AsyncMock()
+        mock_router.get_metrics.side_effect = TickerNotFoundError("BAD", "yahoo")
+        mock_reg = _mock_registry_with_agents({})
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+        ):
+            result = await screen_stocks(tickers=["BAD"], format="json")
+
+        parsed = json.loads(result)
+        assert parsed["total_scanned"] == 1
+        assert len(parsed["candidates"]) == 0
+        assert len(parsed["warnings"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# generate_investment_idea
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateInvestmentIdea:
+    async def test_json_format(self) -> None:
+        from fin_toolkit.mcp_server.server import generate_investment_idea
+
+        agents = {"buffett": _make_agent_result()}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        mock_router.get_prices.return_value = _make_price_data("AAPL", 300)
+        mock_router.get_financials.return_value = _make_financials()
+        mock_router.get_metrics.return_value = _make_metrics()
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+        mock_fund = MagicMock()
+        mock_fund.analyze.return_value = _make_fundamental_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+            patch("fin_toolkit.mcp_server.server._fundamental_analyzer", mock_fund),
+            patch("fin_toolkit.mcp_server.server._search_router", None),
+        ):
+            result = await generate_investment_idea("AAPL", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["ticker"] == "AAPL"
+        assert "consensus" in parsed
+        assert "fundamentals" in parsed
+        assert "fcf_waterfall" in parsed
+        assert "scenarios" in parsed
+        assert len(parsed["scenarios"]) == 3
+
+    async def test_html_format(self) -> None:
+        from fin_toolkit.mcp_server.server import generate_investment_idea
+
+        agents = {"buffett": _make_agent_result()}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        mock_router.get_prices.return_value = _make_price_data("AAPL", 300)
+        mock_router.get_financials.return_value = _make_financials()
+        mock_router.get_metrics.return_value = _make_metrics()
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+        mock_fund = MagicMock()
+        mock_fund.analyze.return_value = _make_fundamental_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+            patch("fin_toolkit.mcp_server.server._fundamental_analyzer", mock_fund),
+            patch("fin_toolkit.mcp_server.server._search_router", None),
+            patch("webbrowser.open"),
+        ):
+            result = await generate_investment_idea("AAPL", format="html")
+
+        # HTML output returns summary text (not JSON)
+        assert "AAPL" in result
+        assert "Report saved" in result
+
+    async def test_provider_error_graceful(self) -> None:
+        from fin_toolkit.mcp_server.server import generate_investment_idea
+
+        mock_router = AsyncMock()
+        mock_router.get_prices.side_effect = AllProvidersFailedError({"yahoo": "fail"})
+        mock_router.get_financials.side_effect = AllProvidersFailedError({"yahoo": "fail"})
+        mock_router.get_metrics.side_effect = AllProvidersFailedError({"yahoo": "fail"})
+        mock_reg = _mock_registry_with_agents({})
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+        mock_fund = MagicMock()
+        mock_fund.analyze.return_value = _make_fundamental_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+            patch("fin_toolkit.mcp_server.server._fundamental_analyzer", mock_fund),
+            patch("fin_toolkit.mcp_server.server._search_router", None),
+        ):
+            result = await generate_investment_idea("AAPL", format="json")
+
+        # Should still return a result (with warnings), not an error
+        parsed = json.loads(result)
+        assert parsed["ticker"] == "AAPL"
+        assert len(parsed["warnings"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# parse_report
+# ---------------------------------------------------------------------------
+
+
+class TestParseReport:
+    async def test_parse_report_returns_financials(self) -> None:
+        from fin_toolkit.mcp_server.server import parse_report
+
+        mock_fin = MagicMock()
+        mock_fin.model_dump.return_value = {
+            "ticker": "TEST",
+            "income_statement": {"revenue": 100000},
+            "balance_sheet": None,
+            "cash_flow": None,
+            "income_history": None,
+            "cash_flow_history": None,
+        }
+
+        with patch(
+            "fin_toolkit.mcp_server.server.parse_financial_report",
+            return_value=mock_fin,
+            create=True,
+        ):
+            # Need to patch at the import location
+            with patch(
+                "fin_toolkit.providers.pdf_report.parse_financial_report",
+                return_value=mock_fin,
+            ):
+                result = await parse_report("/fake.pdf", "TEST", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["ticker"] == "TEST"

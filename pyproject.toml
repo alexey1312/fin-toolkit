@@ -5,7 +5,7 @@ description = "Protocol-first financial analysis toolkit with MCP server for Cla
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "yfinance>=0.2.40",
+    "yfinance>=1.2.0",
     "pandas>=2.0",
     "ta>=0.11",
     "fastmcp>=2.0",
@@ -15,6 +15,11 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "ddgs>=7.0",
+    "aiomoex>=2.1",
+    "aiohttp>=3.9",
+    "plotly>=6.0",
+    "edgartools>=3.0",
+    "pdfplumber>=0.11",
     "toon-format @ git+https://github.com/toon-format/toon-python.git@v0.9.0-beta.1",
 ]
 
@@ -53,7 +58,7 @@ warn_return_any = true
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
-module = ["ta.*", "yfinance.*", "pandas.*", "duckduckgo_search.*", "ddgs.*", "toon_format.*"]
+module = ["ta.*", "yfinance.*", "pandas.*", "duckduckgo_search.*", "ddgs.*", "toon_format.*", "aiomoex.*", "aiohttp.*", "plotly.*", "edgar.*", "edgartools.*", "pdfplumber.*"]
 ignore_missing_imports = true
 follow_untyped_imports = true
 

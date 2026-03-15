@@ -58,6 +58,7 @@ class MarketConfig(BaseModel):
 DEFAULT_RATE_LIMITS: dict[str, RateLimitConfig] = {
     "yahoo": RateLimitConfig(requests_per_minute=5, max_concurrent=2),
     "kase": RateLimitConfig(requests_per_minute=2, max_concurrent=1),
+    "moex": RateLimitConfig(requests_per_minute=10, max_concurrent=3),
     "fmp": RateLimitConfig(requests_per_minute=30, max_concurrent=5),
     "financialdatasets": RateLimitConfig(requests_per_minute=30, max_concurrent=5),
     "brave": RateLimitConfig(requests_per_minute=10, max_concurrent=3),
@@ -66,12 +67,12 @@ DEFAULT_RATE_LIMITS: dict[str, RateLimitConfig] = {
 DEFAULT_MARKETS: dict[str, MarketConfig] = {
     "kz": MarketConfig(
         provider="kase",
-        tickers=["KCEL", "KZTO", "KEGC", "HSBK", "CCBN"],
+        tickers=["KCEL", "KZTO", "KEGC", "HSBK", "CCBN", "KZAP"],
     ),
 }
 
 # Providers that don't need API keys
-KEY_FREE_PROVIDERS = {"yahoo", "kase"}
+KEY_FREE_PROVIDERS = {"yahoo", "kase", "moex"}
 
 # Environment variable names for API keys
 PROVIDER_KEY_MAP: dict[str, str] = {

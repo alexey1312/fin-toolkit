@@ -16,7 +16,7 @@ fin-toolkit setup --global   # global (~/.claude.json)
 fin-toolkit status
 ```
 
-All 6 MCP tools work out of the box — no API keys required (Yahoo Finance + DuckDuckGo).
+All MCP tools work out of the box — no API keys required (Yahoo Finance + DuckDuckGo).
 
 ## How It Works
 
@@ -34,16 +34,18 @@ All 6 MCP tools work out of the box — no API keys required (Yahoo Finance + Du
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌───────────┐ │
 │  │get_stock_data│ │run_technical │ │run_fundamental│ │run_risk   │ │
 │  │              │ │_analysis     │ │_analysis      │ │_analysis  │ │
-│  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └─────┬─────┘ │
-│         │                │                │               │        │
-│  ┌──────┴────────────────┴────────────────┴───────────────┘        │
-│  │                                                                  │
-│  │  ┌───────────┐ ┌───────────────┐                                │
-│  │  │search_news│ │  run_agent    │                                │
-│  │  └─────┬─────┘ └──────┬───────┘                                │
-│  │        │              │                                          │
-│  ▼        ▼              ▼                                          │
-│  ┌─────────────────────────────────────────────────────────────┐   │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └───────────┘ │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌───────────┐ │
+│  │search_news   │ │run_agent     │ │run_all_agents│ │run_recom- │ │
+│  │              │ │              │ │              │ │mendation  │ │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └───────────┘ │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌───────────┐ │
+│  │run_portfolio │ │screen_stocks │ │generate_     │ │parse_     │ │
+│  │_analysis     │ │              │ │investment_   │ │report     │ │
+│  │              │ │              │ │idea          │ │           │ │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └───────────┘ │
+│                             │                                       │
+│  ┌──────────────────────────┴──────────────────────────────────┐   │
 │  │                    Routing Layer                              │   │
 │  │  ProviderRouter          SearchRouter        AgentRegistry   │   │
 │  │  (market map → primary   (DuckDuckGo →       (6 agents)      │   │
@@ -54,13 +56,13 @@ All 6 MCP tools work out of the box — no API keys required (Yahoo Finance + Du
 ┌──────────────────┐ ┌─────────────────────┐ ┌────────────────────────┐
 │  Data Providers  │ │  Search Providers   │ │   Analysis Agents      │
 │                  │ │                     │ │                        │
-│  Yahoo Finance   │ │  DuckDuckGo (free)  │
-│  Google (Gemini)    │ │  Elvis Marlamov        │
-│  KASE (scraper)  │ │  SearXNG            │ │  Warren Buffett        │
-│                  │ │  Perplexity         │ │  Ben Graham            │
-│                  │ │  Tavily             │ │  Charlie Munger        │
-│                  │ │  Brave              │ │  Cathie Wood           │
-│                  │ │  Serper             │ │  Peter Lynch           │
+│  Yahoo Finance   │ │  DuckDuckGo (free)  │ │  Elvis Marlamov        │
+│  KASE (JSON API) │ │  SearXNG            │ │  Warren Buffett        │
+│  MOEX (aiomoex)  │ │  Google (Gemini)    │ │  Ben Graham            │
+│  FinDatasets.ai  │ │  Perplexity         │ │  Charlie Munger        │
+│  EDGAR (SEC)     │ │  Tavily             │ │  Cathie Wood           │
+│  PDF Reports     │ │  Brave              │ │  Peter Lynch           │
+│                  │ │  Serper             │ │                        │
 │                  │ │  Exa                │ │                        │
 └──────────────────┘ └─────────────────────┘ └────────────────────────┘
 ```
@@ -129,6 +131,71 @@ agent: "elvis_marlamov"   # or warren_buffett, ben_graham, charlie_munger, cathi
 
 Returns: signal (Bullish/Neutral/Bearish), score (0-100), confidence (0.0-1.0), rationale, breakdown.
 
+### run_all_agents
+
+Run all active agents on a ticker and compute consensus.
+
+```
+ticker: "AAPL"
+```
+
+Returns: consensus score, signal, confidence, and per-agent results.
+
+### run_recommendation
+
+Generate a buy/hold recommendation with position sizing.
+
+```
+ticker: "AAPL"
+period: "1y"
+```
+
+Returns: consensus, risk, technical signals, position size (0-25% portfolio), stop-loss level.
+
+### run_portfolio_analysis
+
+Analyze a portfolio with correlation-adjusted position sizing.
+
+```
+tickers: ["AAPL", "MSFT", "GOOGL"]
+period: "1y"
+```
+
+Returns: per-ticker recommendations, correlation matrix, adjusted position sizes, total allocation.
+
+### screen_stocks
+
+Screen stocks by valuation score with optional consensus on top candidates.
+
+```
+tickers: ["AAPL", "MSFT", "GOOGL"]  # or use market
+market: "moex"                        # auto-fetch tickers (moex, kase)
+top_n: 10
+```
+
+### generate_investment_idea
+
+Generate a comprehensive investment idea with charts.
+
+```
+ticker: "AAPL"
+period: "2y"
+format: "html"        # opens interactive HTML with Plotly charts
+```
+
+Returns: consensus, fundamentals, scenarios, FCF waterfall, catalysts, risks, price chart.
+
+### parse_report
+
+Parse a financial report PDF and extract structured data.
+
+```
+source: "https://example.com/report.pdf"  # URL or local path
+ticker: "AAPL"
+```
+
+Works with English and Russian (IFRS/МСФО) reports.
+
 ## Analysis Agents
 
 | Agent | Style | Scoring |
@@ -139,6 +206,17 @@ Returns: signal (Bullish/Neutral/Bearish), score (0-100), confidence (0.0-1.0), 
 | `charlie_munger` | Wonderful business at fair price | business quality / fair price / financial fortress |
 | `cathie_wood` | Innovation & growth | growth signals / innovation premium / market position |
 | `peter_lynch` | GARP | PEG value / earnings quality / common sense |
+
+## Data Providers
+
+| Provider | Markets | API Key | Notes |
+|----------|---------|---------|-------|
+| Yahoo Finance | Global | No | Default, free |
+| KASE | Kazakhstan | No | JSON API (`kase.kz/api/*`), realtime data + Yahoo `.ME` fallback for OHLCV |
+| MOEX | Russia | No | Via `aiomoex` package |
+| Financial Datasets | US | Yes (`FINANCIAL_DATASETS_API_KEY`) | SEC EDGAR data, 17k+ tickers |
+| EDGAR | US | No | SEC filings via `edgartools` |
+| PDF Reports | Any | No | Parse IFRS/МСФО PDFs via `pdfplumber` |
 
 ## Search Providers
 
@@ -163,7 +241,11 @@ fin-toolkit/
     protocol.py       #   DataProvider protocol (get_prices, get_financials, get_metrics)
     search_protocol.py#   SearchProvider protocol (search)
     yahoo.py          #   Yahoo Finance (free, no API key)
-    kase.py           #   KASE scraper (Kazakhstan stock exchange)
+    kase.py           #   KASE JSON API + Yahoo .ME fallback
+    moex.py           #   MOEX via aiomoex
+    financialdatasets.py#  Financial Datasets REST API
+    edgar.py          #   SEC EDGAR filings via edgartools
+    pdf_report.py     #   PDF report parser (IFRS/МСФО)
     duckduckgo.py     #   DuckDuckGo (free, no API key)
     searxng.py        #   SearXNG (self-hosted search)
     google.py         #   Google Search via Gemini API grounding
@@ -178,6 +260,9 @@ fin-toolkit/
     technical.py      #   RSI, EMA, Bollinger Bands, MACD
     fundamental.py    #   Profitability, valuation, stability ratios
     risk.py           #   Volatility, VaR, correlation
+    portfolio.py      #   Consensus, position sizing, stop-loss
+    screening.py      #   Quick valuation scoring
+    idea.py           #   Investment idea: scenarios, catalysts, FCF
   agents/             # Analysis agents (protocol + implementations)
     protocol.py       #   AnalysisAgent protocol (analyze -> AgentResult)
     elvis.py          #   Elvis Marlamov
@@ -195,7 +280,10 @@ fin-toolkit/
     models.py         #   ToolkitConfig, DataConfig, SearchConfig, etc.
     loader.py         #   YAML + env + defaults loader
   mcp_server/         # FastMCP server
-    server.py         #   MCP tools (get_stock_data, run_technical_analysis, ...)
+    server.py         #   MCP tools (12 tools)
+    serialize.py      #   TOON/JSON serialization
+  report/             # Report generation
+    html_report.py    #   Interactive HTML reports with Plotly charts
   cli.py              # CLI entry point (serve, setup, status)
 ```
 
@@ -235,7 +323,7 @@ agents:
 markets:
   kz:
     provider: kase
-    tickers: [KCEL, KZTO, KEGC, HSBK, CCBN]
+    tickers: [KCEL, KZTO, KEGC, HSBK, CCBN, KZAP]
 ```
 
 ## Testing

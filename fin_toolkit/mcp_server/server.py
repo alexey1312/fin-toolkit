@@ -31,9 +31,12 @@ from fin_toolkit.models.price_data import PriceData
 from fin_toolkit.models.results import (
     ConsensusResult,
     CorrelationResult,
+    InvestmentIdeaResult,
     PortfolioResult,
     RecommendationResult,
     RiskResult,
+    ScreeningCandidate,
+    ScreeningResult,
 )
 from fin_toolkit.providers.router import ProviderRouter
 from fin_toolkit.providers.search_router import SearchRouter
@@ -555,3 +558,389 @@ async def run_portfolio_analysis(
     except Exception as exc:
         logger.exception("Unexpected error in run_portfolio_analysis")
         return _error_response(f"Internal error: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Investment Idea / Screening / Report tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool
+async def screen_stocks(
+    tickers: list[str] | None = None,
+    market: str | None = None,
+    top_n: int = 10,
+    format: str = "toon",
+) -> str:
+    """Screen stocks by quick valuation score and optionally run consensus on top candidates.
+
+    Provide either an explicit list of tickers or a market name to auto-fetch.
+
+    Args:
+        tickers: Explicit list of ticker symbols to screen.
+        market: Market to auto-fetch tickers from ("moex", "kase", "sp500").
+        top_n: How many top candidates to run full consensus on.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        assert _provider_router is not None
+
+        from fin_toolkit.analysis.screening import compute_quick_score
+
+        # Resolve ticker list
+        ticker_list = tickers or []
+        if not ticker_list and market:
+            ticker_list = await _resolve_market_tickers(market)
+        if not ticker_list:
+            return _error_response("Provide tickers or market name")
+
+        # Stage 1: quick score
+        scored: list[tuple[str, float, dict[str, float | None]]] = []
+        warnings: list[str] = []
+        for ticker in ticker_list:
+            try:
+                metrics = await _provider_router.get_metrics(ticker)
+                qs = compute_quick_score(metrics)
+                key_m: dict[str, float | None] = {
+                    "pe_ratio": metrics.pe_ratio,
+                    "pb_ratio": metrics.pb_ratio,
+                    "ev_ebitda": metrics.ev_ebitda,
+                    "dividend_yield": metrics.dividend_yield,
+                    "roe": metrics.roe,
+                }
+                scored.append((ticker, qs, key_m))
+            except Exception as exc:
+                warnings.append(f"{ticker}: {exc}")
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        top = scored[:top_n]
+
+        # Stage 2: consensus for top-N
+        candidates: list[ScreeningCandidate] = []
+        for ticker, qs, key_m in top:
+            cs_score: float | None = None
+            cs_signal: str | None = None
+            try:
+                consensus = await _run_consensus(ticker)
+                cs_score = consensus.consensus_score
+                cs_signal = consensus.consensus_signal
+            except Exception as exc:
+                warnings.append(f"{ticker} consensus: {exc}")
+
+            candidates.append(ScreeningCandidate(
+                ticker=ticker,
+                quick_score=qs,
+                consensus_score=cs_score,
+                consensus_signal=cs_signal,
+                key_metrics=key_m,
+            ))
+
+        result = ScreeningResult(
+            market=market,
+            total_scanned=len(ticker_list),
+            candidates=candidates,
+            warnings=warnings,
+        )
+        return serialize(result.model_dump(), format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in screen_stocks")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
+async def generate_investment_idea(
+    ticker: str,
+    period: str = "2y",
+    format: str = "html",
+) -> str:
+    """Generate a comprehensive investment idea with analysis, scenarios, and charts.
+
+    Combines consensus from all agents, fundamental/technical/risk analysis,
+    FCF waterfall, scenario valuations, catalysts, and risks into a single report.
+    Default output is an interactive HTML file with Plotly charts.
+
+    Args:
+        ticker: Stock ticker symbol.
+        period: Time period for price data (1m, 3m, 6m, 1y, 2y, 5y).
+        format: Output format - "html" (default, opens in browser), "toon", or "json".
+    """
+    try:
+        assert _provider_router is not None
+        assert _technical_analyzer is not None
+        assert _fundamental_analyzer is not None
+
+        start, end = _period_to_dates(period)
+
+        # Step 1: parallel data fetch
+        consensus_task = _run_consensus(ticker)
+        financials_task = _provider_router.get_financials(ticker)
+        metrics_task = _provider_router.get_metrics(ticker)
+        prices_task = _provider_router.get_prices(ticker, start, end)
+
+        results = await asyncio.gather(
+            consensus_task, financials_task, metrics_task, prices_task,
+            return_exceptions=True,
+        )
+
+        consensus = _unwrap(results[0], "consensus")
+        financials = _unwrap(results[1], "financials")
+        metrics = _unwrap(results[2], "metrics")
+        price_data = _unwrap(results[3], "prices")
+
+        idea_warnings: list[str] = []
+
+        if isinstance(consensus, str):
+            idea_warnings.append(consensus)
+            from fin_toolkit.analysis.portfolio import compute_consensus
+            consensus = compute_consensus({}, {"_": consensus})
+        if isinstance(financials, str):
+            idea_warnings.append(financials)
+            from fin_toolkit.models.financial import FinancialStatements
+            financials = FinancialStatements(
+                ticker=ticker, income_statement=None,
+                balance_sheet=None, cash_flow=None,
+            )
+        if isinstance(metrics, str):
+            idea_warnings.append(metrics)
+            from fin_toolkit.models.financial import KeyMetrics
+            metrics = KeyMetrics(
+                ticker=ticker, pe_ratio=None, pb_ratio=None,
+                market_cap=None, dividend_yield=None,
+                roe=None, roa=None, debt_to_equity=None,
+            )
+        if isinstance(price_data, str):
+            idea_warnings.append(price_data)
+            price_data = PriceData(ticker=ticker, period=period, prices=[])
+
+        # Step 2: search for catalysts/risks
+        search_results_catalysts: list[Any] = []
+        search_results_risks: list[Any] = []
+        if _search_router is not None:
+            try:
+                cat_task = _search_router.search(
+                    f"{ticker} acquisition merger buyback restructuring", max_results=5,
+                )
+                risk_task = _search_router.search(
+                    f"{ticker} sanctions investigation regulatory ESG", max_results=5,
+                )
+                cat_r, risk_r = await asyncio.gather(cat_task, risk_task, return_exceptions=True)
+                if not isinstance(cat_r, BaseException):
+                    search_results_catalysts = cat_r
+                if not isinstance(risk_r, BaseException):
+                    search_results_risks = risk_r
+            except Exception:
+                pass
+
+        # Step 3: analysis
+        from fin_toolkit.analysis.idea import (
+            classify_catalysts,
+            compute_cagr,
+            compute_fcf_waterfall,
+            compute_scenarios,
+            detect_risks,
+        )
+
+        # Technical & risk
+        technical = _technical_analyzer.analyze(price_data) if price_data.prices else (
+            _empty_technical()
+        )
+        risk = _compute_risk(price_data) if price_data.prices else _empty_risk()
+
+        # Fundamental
+        sector = _detect_sector(ticker)
+        fund_result = _fundamental_analyzer.analyze(financials, metrics, sector=sector)
+
+        # CAGR from history
+        revenue_cagr: float | None = None
+        ebitda_cagr: float | None = None
+        if financials.income_history:
+            rev_values = [
+                float(p.get("revenue", 0)) for p in reversed(financials.income_history)
+                if p.get("revenue") is not None
+            ]
+            ebitda_values = [
+                float(p.get("ebitda", 0)) for p in reversed(financials.income_history)
+                if p.get("ebitda") is not None
+            ]
+            if len(rev_values) >= 2:
+                revenue_cagr = compute_cagr(rev_values, len(rev_values) - 1)
+            if len(ebitda_values) >= 2:
+                ebitda_cagr = compute_cagr(ebitda_values, len(ebitda_values) - 1)
+
+        # FCF waterfall
+        fcf_waterfall = compute_fcf_waterfall(financials, metrics)
+
+        # Scenarios
+        inc = financials.income_statement or {}
+        bs = financials.balance_sheet or {}
+        ebitda_val = _safe_float(inc.get("ebitda"))
+        total_debt = _safe_float(bs.get("total_debt"))
+        cash = _safe_float(bs.get("cash_and_equivalents"))
+        net_debt: float | None = None
+        if total_debt is not None:
+            net_debt = total_debt - (cash or 0)
+        elif metrics.enterprise_value and metrics.market_cap:
+            net_debt = metrics.enterprise_value - metrics.market_cap
+
+        scenarios = compute_scenarios(
+            current_price=metrics.current_price or 0,
+            ebitda=ebitda_val,
+            ebitda_cagr=ebitda_cagr,
+            ev_ebitda_multiple=metrics.ev_ebitda,
+            ev=metrics.enterprise_value,
+            net_debt=net_debt,
+            shares=metrics.shares_outstanding,
+        )
+
+        # Catalysts & risks
+        catalysts = classify_catalysts(search_results_catalysts)
+        risks = detect_risks(fund_result.model_dump(), risk, search_results_risks)
+
+        # Price history for chart
+        price_history = [
+            {"date": p.date, "open": p.open, "high": p.high,
+             "low": p.low, "close": p.close, "volume": p.volume}
+            for p in price_data.prices
+        ]
+
+        idea = InvestmentIdeaResult(
+            ticker=ticker,
+            current_price=metrics.current_price,
+            consensus=consensus,
+            fundamentals=fund_result,
+            catalysts=catalysts,
+            revenue_cagr_3y=revenue_cagr,
+            ebitda_cagr_3y=ebitda_cagr,
+            fcf_waterfall=fcf_waterfall,
+            scenarios=scenarios,
+            risks=risks,
+            technical=technical,
+            risk=risk,
+            price_history=price_history,
+            warnings=idea_warnings,
+        )
+
+        # Step 4: output
+        if format == "html":
+            return _render_html_idea(idea)
+        return serialize(idea.model_dump(), format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in generate_investment_idea")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
+async def parse_report(
+    source: str,
+    ticker: str,
+    format: str = "toon",
+) -> str:
+    """Parse a financial report PDF and extract structured data.
+
+    Extracts income statement, balance sheet, and cash flow from PDF.
+    Works with English and Russian (IFRS/МСФО) reports.
+
+    Args:
+        source: URL or local path to PDF report.
+        ticker: Ticker symbol to associate with the extracted data.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        from fin_toolkit.providers.pdf_report import parse_financial_report
+
+        result = await parse_financial_report(source, ticker)
+        return serialize(result.model_dump(), format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in parse_report")
+        return _error_response(f"Internal error: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Helpers for investment idea / screening
+# ---------------------------------------------------------------------------
+
+
+def _unwrap(result: Any, label: str) -> Any:
+    """Unwrap asyncio.gather result: return value or error string."""
+    if isinstance(result, BaseException):
+        return f"{label}: {result}"
+    return result
+
+
+async def _resolve_market_tickers(market: str) -> list[str]:
+    """Resolve market name to a list of tickers."""
+    if market == "moex":
+        from fin_toolkit.providers.moex import MOEXProvider
+        moex = MOEXProvider()
+        return await moex.list_tickers()
+    if market == "kase":
+        return ["KCEL", "KZTO", "KEGC", "HSBK", "CCBN"]
+    return []
+
+
+def _render_html_idea(idea: InvestmentIdeaResult) -> str:
+    """Render idea to HTML, save to /tmp, open in browser, return summary."""
+    import webbrowser
+    from pathlib import Path
+
+    from fin_toolkit.report.html_report import render_investment_idea_html
+
+    html = render_investment_idea_html(idea)
+    date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = Path(f"/tmp/fin_toolkit_{idea.ticker}_{date_str}.html")
+    path.write_text(html)
+    webbrowser.open(f"file://{path}")
+
+    # Return summary
+    scenarios_summary = ""
+    for s in idea.scenarios:
+        if s.target_price is not None:
+            scenarios_summary += f"  {s.label}: ${s.target_price:,.2f}"
+            if s.upside_pct is not None:
+                scenarios_summary += f" ({s.upside_pct:+.1f}%)"
+            scenarios_summary += "\n"
+
+    return (
+        f"Investment Idea: {idea.ticker}\n"
+        f"Signal: {idea.consensus.consensus_signal} "
+        f"({idea.consensus.consensus_score:.0f}/100)\n"
+        f"Price: ${idea.current_price:,.2f}\n" if idea.current_price else ""
+        f"Scenarios:\n{scenarios_summary}"
+        f"Report saved: {path}\n"
+        f"Opened in browser."
+    )
+
+
+def _empty_technical() -> Any:
+    """Return an empty TechnicalResult for when no price data is available."""
+    from fin_toolkit.models.results import TechnicalResult
+    return TechnicalResult(
+        rsi=None, ema_20=None, ema_50=None, ema_200=None,
+        bb_upper=None, bb_middle=None, bb_lower=None,
+        macd_line=None, macd_signal=None, macd_histogram=None,
+        signals={}, overall_bias="Neutral", warnings=["No price data"],
+    )
+
+
+def _empty_risk() -> RiskResult:
+    """Return an empty RiskResult for when no price data is available."""
+    return RiskResult(
+        volatility_30d=None, volatility_90d=None, volatility_252d=None,
+        var_95=None, var_99=None, warnings=["No price data"],
+    )
+
+
+def _safe_float(val: object) -> float | None:
+    """Safely convert to float or return None."""
+    if val is None:
+        return None
+    try:
+        return float(val)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
