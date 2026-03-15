@@ -20,7 +20,6 @@ def _make_financials(
     capital_expenditures: float = 10_959_000_000,
     invested_capital: float = 173_234_000_000,
     ebitda: float = 130_541_000_000,
-    enterprise_value: float = 3_100_000_000_000,
 ) -> FinancialStatements:
     return FinancialStatements(
         ticker=ticker,
@@ -39,7 +38,6 @@ def _make_financials(
             "current_assets": current_assets,
             "current_liabilities": current_liabilities,
             "invested_capital": invested_capital,
-            "enterprise_value": enterprise_value,
         },
         cash_flow={
             "operating_cash_flow": operating_cash_flow,
@@ -57,6 +55,7 @@ def _make_metrics(
     roe: float | None = 1.56,
     roa: float | None = 0.275,
     debt_to_equity: float | None = 1.787,
+    enterprise_value: float | None = 3_100_000_000_000,
 ) -> KeyMetrics:
     return KeyMetrics(
         ticker=ticker,
@@ -67,6 +66,7 @@ def _make_metrics(
         roe=roe,
         roa=roa,
         debt_to_equity=debt_to_equity,
+        enterprise_value=enterprise_value,
     )
 
 

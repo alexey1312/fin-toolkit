@@ -95,6 +95,7 @@ def _make_metrics(ticker: str = "AAPL") -> KeyMetrics:
         roe=0.20,
         roa=0.10,
         debt_to_equity=1.5,
+        enterprise_value=3_000_000_000_000,
     )
 
 

@@ -32,6 +32,7 @@ def _make_info() -> dict[str, object]:
         "returnOnEquity": 1.5,
         "returnOnAssets": 0.3,
         "debtToEquity": 180.0,
+        "enterpriseValue": 3_500_000_000_000,
     }
 
 
@@ -130,6 +131,7 @@ class TestYahooFinanceProvider:
         assert result.dividend_yield == 0.005
         assert result.roe == 1.5
         assert result.debt_to_equity == 180.0
+        assert result.enterprise_value == 3_500_000_000_000
 
     @patch("fin_toolkit.providers.yahoo.yf")
     async def test_get_metrics_empty_info_raises(self, mock_yf: MagicMock) -> None:

@@ -23,3 +23,4 @@ class KeyMetrics(BaseModel):
     roe: float | None
     roa: float | None
     debt_to_equity: float | None
+    enterprise_value: float | None = None

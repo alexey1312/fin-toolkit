@@ -85,6 +85,7 @@ class YahooFinanceProvider:
             roe=info.get("returnOnEquity"),
             roa=info.get("returnOnAssets"),
             debt_to_equity=info.get("debtToEquity"),
+            enterprise_value=info.get("enterpriseValue"),
         )
 
     @staticmethod

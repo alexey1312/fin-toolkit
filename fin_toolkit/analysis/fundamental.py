@@ -139,7 +139,7 @@ class FundamentalAnalyzer:
         pb_ratio = km.pb_ratio
         dividend_yield = km.dividend_yield
 
-        enterprise_value = _safe_get(fs.balance_sheet, "enterprise_value")
+        enterprise_value = km.enterprise_value
         ebitda = _safe_get(fs.income_statement, "ebitda")
         ev_ebitda = _safe_div(enterprise_value, ebitda)
 
