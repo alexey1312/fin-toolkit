@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -40,10 +41,14 @@ class FinancialDatasetsProvider:
 
     async def get_prices(self, ticker: str, start: str, end: str) -> PriceData:
         """Fetch historical EOD prices."""
+        # API rejects end_date in the future (uses UTC date internally).
+        yesterday = str(date.today() - timedelta(days=1))
+        safe_end = min(end, yesterday)
+
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(
                 f"{_BASE_URL}/prices",
-                params={"ticker": ticker, "interval": "day", "start_date": start, "end_date": end},
+                params={"ticker": ticker, "interval": "day", "start_date": start, "end_date": safe_end},
                 headers=self._headers(),
             )
             if resp.status_code != 200:
