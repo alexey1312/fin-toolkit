@@ -70,11 +70,13 @@ Priority: env vars → `.env` → `./fin-toolkit.yaml` → `~/.config/fin-toolki
 
 ### Search provider chain
 
-Fallback order: DuckDuckGo → SearXNG → Perplexity → Tavily → Brave → Serper → Exa.
-- Key-based: `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY`, `SERPER_API_KEY`, `EXA_API_KEY`
+Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → Brave → Serper → Exa.
+- Key-based: `GEMINI_API_KEY`, `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY`, `SERPER_API_KEY`, `EXA_API_KEY`
+- Google: uses Gemini API with Search Grounding; model configurable via `search.gemini_model` (default: `gemini-3.1-flash-lite`)
 - DuckDuckGo: always available, no API key (uses `ddgs` package, NOT `duckduckgo-search`)
 - SearXNG: self-hosted via Docker, `search.searxng_url` in config (default `http://localhost:8888`)
 - New search provider: implement `SearchProvider` protocol (~50 LOC), add to `config/models.py` + `cli.py`
+- Google search provider has extra `model` param — wired separately from generic key-based loop in `cli.py`
 
 ## Testing
 

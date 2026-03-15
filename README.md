@@ -54,7 +54,8 @@ All 6 MCP tools work out of the box — no API keys required (Yahoo Finance + Du
 ┌──────────────────┐ ┌─────────────────────┐ ┌────────────────────────┐
 │  Data Providers  │ │  Search Providers   │ │   Analysis Agents      │
 │                  │ │                     │ │                        │
-│  Yahoo Finance   │ │  DuckDuckGo (free)  │ │  Elvis Marlamov        │
+│  Yahoo Finance   │ │  DuckDuckGo (free)  │
+│  Google (Gemini)    │ │  Elvis Marlamov        │
 │  KASE (scraper)  │ │  SearXNG            │ │  Warren Buffett        │
 │                  │ │  Perplexity         │ │  Ben Graham            │
 │                  │ │  Tavily             │ │  Charlie Munger        │
@@ -147,11 +148,12 @@ Fallback chain (first available wins):
 |---|----------|---------|---------|-------|
 | 1 | DuckDuckGo | No | — | Always available, default |
 | 2 | SearXNG | No | — | Self-hosted (`docker run -p 8888:8080 searxng/searxng`) |
-| 3 | Perplexity | Yes | `PERPLEXITY_API_KEY` | AI-powered search with citations |
-| 4 | Tavily | Yes | `TAVILY_API_KEY` | Optimized for AI agents |
-| 5 | Brave | Yes | `BRAVE_API_KEY` | Web search |
-| 6 | Serper | Yes | `SERPER_API_KEY` | Google Search wrapper |
-| 7 | Exa | Yes | `EXA_API_KEY` | Semantic / neural search |
+| 3 | Google | Yes | `GEMINI_API_KEY` | Gemini + Search Grounding (model configurable via `search.gemini_model`) |
+| 4 | Perplexity | Yes | `PERPLEXITY_API_KEY` | AI-powered search with citations |
+| 5 | Tavily | Yes | `TAVILY_API_KEY` | Optimized for AI agents |
+| 6 | Brave | Yes | `BRAVE_API_KEY` | Web search |
+| 7 | Serper | Yes | `SERPER_API_KEY` | Google Search wrapper |
+| 8 | Exa | Yes | `EXA_API_KEY` | Semantic / neural search |
 
 ## Architecture
 
@@ -164,6 +166,7 @@ fin-toolkit/
     kase.py           #   KASE scraper (Kazakhstan stock exchange)
     duckduckgo.py     #   DuckDuckGo (free, no API key)
     searxng.py        #   SearXNG (self-hosted search)
+    google.py         #   Google Search via Gemini API grounding
     perplexity.py     #   Perplexity Sonar API
     tavily.py         #   Tavily Search API
     brave.py          #   Brave Search API
@@ -208,7 +211,7 @@ All exceptions inherit from `FinToolkitError`. Key subtypes: `TickerNotFoundErro
 
 fin-toolkit loads configuration from (in priority order):
 
-1. Environment variables (`BRAVE_API_KEY`, `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, etc.)
+1. Environment variables (`GEMINI_API_KEY`, `BRAVE_API_KEY`, `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, etc.)
 2. `.env` file in the project root
 3. `./fin-toolkit.yaml` (local config)
 4. `~/.config/fin-toolkit/config.yaml` (global config)
@@ -222,8 +225,9 @@ data:
   fallback_providers: [fmp]
 
 search:
-  providers: [duckduckgo, searxng, perplexity, tavily, brave, serper, exa]
+  providers: [duckduckgo, searxng, google, perplexity, tavily, brave, serper, exa]
   searxng_url: http://localhost:8888
+  gemini_model: gemini-3.1-flash-lite  # configurable Gemini model for Google search
 
 agents:
   active: [elvis_marlamov, warren_buffett, ben_graham, charlie_munger, cathie_wood, peter_lynch]

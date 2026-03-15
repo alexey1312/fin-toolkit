@@ -5,6 +5,7 @@ data:
 
 search:
   providers:
+    - google
     - brave
     - searxng
   searxng_url: "http://localhost:8888"

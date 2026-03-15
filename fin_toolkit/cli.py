@@ -102,6 +102,16 @@ def _serve() -> None:
         search_list.append(SearXNGProvider(base_url=config.search.searxng_url))
 
     # Key-based providers: added after free defaults
+    # Google: has extra model param
+    if "google" in available_search:
+        gkey = config.api_keys.get("google") or os.environ.get("GEMINI_API_KEY", "")
+        if gkey:
+            from fin_toolkit.providers.google import GoogleSearchProvider
+            search_list.append(
+                GoogleSearchProvider(api_key=gkey, model=config.search.gemini_model),
+            )
+
+    # Other key-based providers
     _key_providers: list[tuple[str, str, type]] = []
     if "perplexity" in available_search:
         from fin_toolkit.providers.perplexity import PerplexitySearchProvider

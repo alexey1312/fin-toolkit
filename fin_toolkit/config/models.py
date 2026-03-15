@@ -26,10 +26,11 @@ class SearchConfig(BaseModel):
 
     providers: list[str] = Field(
         default_factory=lambda: [
-            "duckduckgo", "searxng", "perplexity", "tavily", "brave", "serper", "exa",
+            "duckduckgo", "searxng", "google", "perplexity", "tavily", "brave", "serper", "exa",
         ],
     )
     searxng_url: str = "http://localhost:8888"
+    gemini_model: str = "gemini-3.1-flash-lite"
 
 
 class AgentsConfig(BaseModel):
@@ -79,6 +80,7 @@ PROVIDER_KEY_MAP: dict[str, str] = {
     "tavily": "TAVILY_API_KEY",
     "serper": "SERPER_API_KEY",
     "exa": "EXA_API_KEY",
+    "google": "GEMINI_API_KEY",
 }
 
 # Search providers that need configuration (not API keys)
@@ -119,7 +121,7 @@ class ToolkitConfig(BaseModel):
     def available_search_providers(self) -> list[str]:
         """Return list of available search providers."""
         available: list[str] = []
-        key_based = ("perplexity", "tavily", "brave", "serper", "exa")
+        key_based = ("google", "perplexity", "tavily", "brave", "serper", "exa")
         for provider in key_based:
             env_var = PROVIDER_KEY_MAP.get(provider, "")
             if self.api_keys.get(provider) or os.environ.get(env_var):
