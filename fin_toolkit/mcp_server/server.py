@@ -18,6 +18,7 @@ from fin_toolkit.analysis.risk import (
 )
 from fin_toolkit.analysis.technical import TechnicalAnalyzer
 from fin_toolkit.exceptions import FinToolkitError
+from fin_toolkit.mcp_server.serialize import serialize
 from fin_toolkit.providers.router import ProviderRouter
 from fin_toolkit.providers.search_router import SearchRouter
 
@@ -104,6 +105,7 @@ async def get_stock_data(
     ticker: str,
     period: str = "1y",
     provider: str | None = None,
+    format: str = "toon",
 ) -> str:
     """Get historical stock price data for a ticker.
 
@@ -111,12 +113,13 @@ async def get_stock_data(
         ticker: Stock ticker symbol (e.g. AAPL, MSFT).
         period: Time period - 1m, 3m, 6m, 1y, 2y, 5y.
         provider: Force a specific data provider (optional).
+        format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
         assert _provider_router is not None
         start, end = _period_to_dates(period)
         price_data = await _provider_router.get_prices(ticker, start, end, provider)
-        return json.dumps(price_data.model_dump())
+        return serialize(price_data.model_dump(), format)
     except FinToolkitError as exc:
         return _error_response(str(exc))
     except Exception as exc:
@@ -125,13 +128,14 @@ async def get_stock_data(
 
 
 @mcp.tool
-async def run_technical_analysis(ticker: str) -> str:
+async def run_technical_analysis(ticker: str, format: str = "toon") -> str:
     """Run technical analysis on a stock ticker.
 
     Computes RSI, EMA, Bollinger Bands, MACD, and derives trading signals.
 
     Args:
         ticker: Stock ticker symbol.
+        format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
         assert _provider_router is not None
@@ -139,7 +143,7 @@ async def run_technical_analysis(ticker: str) -> str:
         start, end = _period_to_dates("1y")
         price_data = await _provider_router.get_prices(ticker, start, end)
         result = _technical_analyzer.analyze(price_data)
-        return json.dumps(result.model_dump())
+        return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
         return _error_response(str(exc))
     except Exception as exc:
@@ -151,6 +155,7 @@ async def run_technical_analysis(ticker: str) -> str:
 async def run_fundamental_analysis(
     ticker: str,
     sector: str | None = None,
+    format: str = "toon",
 ) -> str:
     """Run fundamental analysis on a stock ticker.
 
@@ -160,6 +165,7 @@ async def run_fundamental_analysis(
     Args:
         ticker: Stock ticker symbol.
         sector: Sector for comparison (auto-detected if not provided).
+        format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
         assert _provider_router is not None
@@ -171,7 +177,7 @@ async def run_fundamental_analysis(
             sector = _detect_sector(ticker)
 
         result = _fundamental_analyzer.analyze(financials, metrics, sector=sector)
-        return json.dumps(result.model_dump())
+        return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
         return _error_response(str(exc))
     except Exception as exc:
@@ -183,6 +189,7 @@ async def run_fundamental_analysis(
 async def run_risk_analysis(
     tickers: list[str],
     period: str = "1y",
+    format: str = "toon",
 ) -> str:
     """Run risk analysis on one or more tickers.
 
@@ -191,6 +198,7 @@ async def run_risk_analysis(
     Args:
         tickers: List of stock ticker symbols.
         period: Time period for analysis.
+        format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
         assert _provider_router is not None
@@ -224,7 +232,8 @@ async def run_risk_analysis(
 
         corr = correlation_matrix(prices_map)
 
-        return json.dumps({"risk": risk, "correlation": corr.model_dump()})
+        combined: dict[str, Any] = {"risk": risk, "correlation": corr.model_dump()}
+        return serialize(combined, format)
     except FinToolkitError as exc:
         return _error_response(str(exc))
     except Exception as exc:
@@ -263,12 +272,14 @@ def _safe_calculate_var(
 async def search_news(
     query: str,
     max_results: int = 10,
+    format: str = "toon",
 ) -> str:
     """Search for financial news and articles.
 
     Args:
         query: Search query (e.g. "AAPL earnings Q4 2024").
         max_results: Maximum number of results to return.
+        format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
         if _search_router is None:
@@ -287,7 +298,7 @@ async def search_news(
                 "Search returned no results. "
                 "All configured providers may be unavailable."
             )
-        return json.dumps(data)
+        return serialize(data, format)
     except FinToolkitError as exc:
         return _error_response(str(exc))
     except Exception as exc:
@@ -299,6 +310,7 @@ async def search_news(
 async def run_agent(
     ticker: str,
     agent: str = "elvis_marlamov",
+    format: str = "toon",
 ) -> str:
     """Run an AI analysis agent on a stock ticker.
 
@@ -308,12 +320,13 @@ async def run_agent(
     Args:
         ticker: Stock ticker symbol.
         agent: Agent name to use for analysis.
+        format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
         assert _agent_registry is not None
         agent_instance = _agent_registry.get_agent(agent)
         result = await agent_instance.analyze(ticker)
-        return json.dumps(result.model_dump())
+        return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
         return _error_response(str(exc))
     except Exception as exc:

@@ -533,7 +533,7 @@ class TestMCPToolsIntegration:
         router = ProviderRouter(config=config, providers={"yahoo": mock_provider})
 
         with patch("fin_toolkit.mcp_server.server._provider_router", router):
-            result = await get_stock_data("AAPL", "1y", None)
+            result = await get_stock_data("AAPL", "1y", None, format="json")
 
         parsed = json.loads(result)
         assert parsed["ticker"] == "AAPL"
@@ -553,7 +553,7 @@ class TestMCPToolsIntegration:
             patch("fin_toolkit.mcp_server.server._provider_router", router),
             patch("fin_toolkit.mcp_server.server._technical_analyzer", analyzer),
         ):
-            result = await run_technical_analysis("AAPL")
+            result = await run_technical_analysis("AAPL", format="json")
 
         parsed = json.loads(result)
         assert "rsi" in parsed
@@ -579,7 +579,7 @@ class TestMCPToolsIntegration:
                 return_value="Technology",
             ),
         ):
-            result = await run_fundamental_analysis("AAPL")
+            result = await run_fundamental_analysis("AAPL", format="json")
 
         parsed = json.loads(result)
         assert "profitability" in parsed
@@ -597,7 +597,7 @@ class TestMCPToolsIntegration:
         router = ProviderRouter(config=config, providers={"yahoo": mock_provider})
 
         with patch("fin_toolkit.mcp_server.server._provider_router", router):
-            result = await run_risk_analysis(["AAPL", "MSFT"], "1y")
+            result = await run_risk_analysis(["AAPL", "MSFT"], "1y", format="json")
 
         parsed = json.loads(result)
         assert "risk" in parsed
@@ -617,7 +617,7 @@ class TestMCPToolsIntegration:
         search_router = SearchRouter(providers=[mock_search])
 
         with patch("fin_toolkit.mcp_server.server._search_router", search_router):
-            result = await search_news("AAPL earnings", 5)
+            result = await search_news("AAPL earnings", 5, format="json")
 
         parsed = json.loads(result)
         assert "results" in parsed
@@ -641,7 +641,7 @@ class TestMCPToolsIntegration:
         )
 
         with patch("fin_toolkit.mcp_server.server._agent_registry", registry):
-            result = await run_agent("AAPL", "elvis_marlamov")
+            result = await run_agent("AAPL", "elvis_marlamov", format="json")
 
         parsed = json.loads(result)
         assert "signal" in parsed

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from fin_toolkit.exceptions import (
     AgentNotFoundError,
     AllProvidersFailedError,
@@ -116,11 +118,40 @@ class TestGetStockData:
         mock_router.get_prices.return_value = price_data
 
         with patch("fin_toolkit.mcp_server.server._provider_router", mock_router):
-            result = await get_stock_data("AAPL", "1y", None)
+            result = await get_stock_data("AAPL", "1y", None, format="json")
 
         parsed = json.loads(result)
         assert parsed["ticker"] == "AAPL"
         assert len(parsed["prices"]) == 60
+
+    async def test_json_format(self) -> None:
+        """Explicit format='json' returns valid JSON."""
+        from fin_toolkit.mcp_server.server import get_stock_data
+
+        price_data = _make_price_data("AAPL")
+        mock_router = AsyncMock()
+        mock_router.get_prices.return_value = price_data
+
+        with patch("fin_toolkit.mcp_server.server._provider_router", mock_router):
+            result = await get_stock_data("AAPL", "1y", None, format="json")
+
+        parsed = json.loads(result)
+        assert parsed["ticker"] == "AAPL"
+
+    async def test_default_toon_format(self) -> None:
+        """Default format is TOON (not JSON)."""
+        from fin_toolkit.mcp_server.server import get_stock_data
+
+        price_data = _make_price_data("AAPL")
+        mock_router = AsyncMock()
+        mock_router.get_prices.return_value = price_data
+
+        with patch("fin_toolkit.mcp_server.server._provider_router", mock_router):
+            result = await get_stock_data("AAPL", "1y", None)
+
+        # TOON is not valid JSON
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(result)
 
     async def test_invalid_ticker_returns_error(self) -> None:
         """Invalid ticker returns structured error."""
@@ -159,7 +190,7 @@ class TestRunTechnicalAnalysis:
             patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
             patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
         ):
-            result = await run_technical_analysis("AAPL")
+            result = await run_technical_analysis("AAPL", format="json")
 
         parsed = json.loads(result)
         assert parsed["rsi"] == 55.0
@@ -204,7 +235,7 @@ class TestRunFundamentalAnalysis:
                 "fin_toolkit.mcp_server.server._fundamental_analyzer", mock_analyzer
             ),
         ):
-            result = await run_fundamental_analysis("AAPL")
+            result = await run_fundamental_analysis("AAPL", format="json")
 
         parsed = json.loads(result)
         assert "profitability" in parsed
@@ -227,7 +258,9 @@ class TestRunFundamentalAnalysis:
                 "fin_toolkit.mcp_server.server._fundamental_analyzer", mock_analyzer
             ),
         ):
-            result = await run_fundamental_analysis("AAPL", sector="Technology")
+            result = await run_fundamental_analysis(
+                "AAPL", sector="Technology", format="json"
+            )
 
         mock_analyzer.analyze.assert_called_once()
         call_kwargs = mock_analyzer.analyze.call_args
@@ -257,7 +290,7 @@ class TestRunFundamentalAnalysis:
                 "fin_toolkit.mcp_server.server._detect_sector", return_value="Technology"
             ),
         ):
-            result = await run_fundamental_analysis("AAPL")
+            result = await run_fundamental_analysis("AAPL", format="json")
 
         parsed = json.loads(result)
         assert "profitability" in parsed
@@ -293,7 +326,7 @@ class TestRunRiskAnalysis:
         ]
 
         with patch("fin_toolkit.mcp_server.server._provider_router", mock_router):
-            result = await run_risk_analysis(["AAPL", "MSFT"], "1y")
+            result = await run_risk_analysis(["AAPL", "MSFT"], "1y", format="json")
 
         parsed = json.loads(result)
         assert "risk" in parsed
@@ -324,7 +357,7 @@ class TestRunRiskAnalysis:
         mock_router.get_prices.return_value = _make_price_data("AAPL", 5)
 
         with patch("fin_toolkit.mcp_server.server._provider_router", mock_router):
-            result = await run_risk_analysis(["AAPL"])
+            result = await run_risk_analysis(["AAPL"], format="json")
 
         parsed = json.loads(result)
         assert "risk" in parsed
@@ -357,7 +390,7 @@ class TestSearchNews:
         with patch(
             "fin_toolkit.mcp_server.server._search_router", mock_search_router
         ):
-            result = await search_news("AAPL earnings", 10)
+            result = await search_news("AAPL earnings", 10, format="json")
 
         parsed = json.loads(result)
         assert "results" in parsed
@@ -369,7 +402,7 @@ class TestSearchNews:
         from fin_toolkit.mcp_server.server import search_news
 
         with patch("fin_toolkit.mcp_server.server._search_router", None):
-            result = await search_news("AAPL earnings")
+            result = await search_news("AAPL earnings", format="json")
 
         parsed = json.loads(result)
         assert parsed["results"] == []
@@ -385,7 +418,7 @@ class TestSearchNews:
         with patch(
             "fin_toolkit.mcp_server.server._search_router", mock_search_router
         ):
-            result = await search_news("AAPL earnings")
+            result = await search_news("AAPL earnings", format="json")
 
         parsed = json.loads(result)
         assert parsed["results"] == []
@@ -410,11 +443,28 @@ class TestRunAgent:
         mock_registry.get_agent.return_value = mock_agent
 
         with patch("fin_toolkit.mcp_server.server._agent_registry", mock_registry):
-            result = await run_agent("AAPL", "elvis_marlamov")
+            result = await run_agent("AAPL", "elvis_marlamov", format="json")
 
         parsed = json.loads(result)
         assert parsed["signal"] == "Bullish"
         assert parsed["score"] == 75.0
+
+    async def test_json_format(self) -> None:
+        """Explicit format='json' returns valid JSON for agent."""
+        from fin_toolkit.mcp_server.server import run_agent
+
+        agent_result = _make_agent_result()
+        mock_agent = AsyncMock()
+        mock_agent.analyze.return_value = agent_result
+
+        mock_registry = MagicMock()
+        mock_registry.get_agent.return_value = mock_agent
+
+        with patch("fin_toolkit.mcp_server.server._agent_registry", mock_registry):
+            result = await run_agent("AAPL", "elvis_marlamov", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["signal"] == "Bullish"
 
     async def test_unknown_agent_returns_error(self) -> None:
         """Unknown agent returns structured error."""

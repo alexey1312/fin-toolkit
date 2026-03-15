@@ -20,6 +20,7 @@ This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start
 - `uv run mypy fin_toolkit/` for type checking (strict mode)
 - `uv run ruff check` for linting
 - `uv run ruff check --fix` to auto-fix lint issues
+- hatchling requires `[tool.hatch.metadata] allow-direct-references = true` for git-based dependencies
 
 ## Architecture
 
@@ -49,6 +50,8 @@ New providers/agents implement the protocol; no base class inheritance needed.
 ### MCP server wiring
 
 `mcp_server/server.py` uses module-level globals initialized by `init_server()`. The CLI (`cli.py`) builds all dependencies (providers, analyzers, registry) and passes them to `init_server()` before calling `server.run()`.
+
+All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON saves 30-60% tokens on tabular data. Errors always return JSON. Serialization logic in `mcp_server/serialize.py`.
 
 ### Analysis agents
 
@@ -97,6 +100,7 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Tests mirror source structure: `tests/test_providers/`, `tests/test_analysis/`, etc.
 - `asyncio_mode = "auto"` in pytest config — no need for `@pytest.mark.asyncio`
 - Coverage target: 80% (enforced by `fail_under` in pyproject.toml)
+- MCP tool tests that parse responses with `json.loads()` must pass `format="json"` (default is TOON)
 
 ## Code style
 

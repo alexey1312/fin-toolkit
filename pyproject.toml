@@ -15,6 +15,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "ddgs>=7.0",
+    "toon-format @ git+https://github.com/toon-format/toon-python.git@v0.9.0-beta.1",
 ]
 
 [project.scripts]
@@ -52,7 +53,7 @@ warn_return_any = true
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
-module = ["ta.*", "yfinance.*", "pandas.*", "duckduckgo_search.*", "ddgs.*"]
+module = ["ta.*", "yfinance.*", "pandas.*", "duckduckgo_search.*", "ddgs.*", "toon_format.*"]
 ignore_missing_imports = true
 follow_untyped_imports = true
 
@@ -62,6 +63,9 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [build-system]
 requires = ["hatchling"]

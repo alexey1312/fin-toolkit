@@ -614,6 +614,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "ta" },
+    { name = "toon-format" },
     { name = "yfinance" },
 ]
 
@@ -639,6 +640,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ta", specifier = ">=0.11" },
+    { name = "toon-format", git = "https://github.com/toon-format/toon-python.git?rev=v0.9.0-beta.1" },
     { name = "yfinance", specifier = ">=0.2.40" },
 ]
 
@@ -2076,6 +2078,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/9f/f1668c281c58cfae01482f7114a4b88d345e4c140386241a1a24dcc9e7bc/tomli-2.4.0-cp314-cp314t-win_arm64.whl", hash = "sha256:2b1e3b80e1d5e52e40e9b924ec43d81570f0e7d09d11081b797bc4692765a3d4", size = 99561, upload-time = "2026-01-11T11:22:36.624Z" },
     { url = "https://files.pythonhosted.org/packages/23/d1/136eb2cb77520a31e1f64cbae9d33ec6df0d78bdf4160398e86eec8a8754/tomli-2.4.0-py3-none-any.whl", hash = "sha256:1f776e7d669ebceb01dee46484485f43a4048746235e683bcdffacdf1fb4785a", size = 14477, upload-time = "2026-01-11T11:22:37.446Z" },
 ]
+
+[[package]]
+name = "toon-format"
+version = "0.9.0b1"
+source = { git = "https://github.com/toon-format/toon-python.git?rev=v0.9.0-beta.1#9f8d6f9ff3c519a018039146c9e99709143a2988" }
 
 [[package]]
 name = "types-beautifulsoup4"
