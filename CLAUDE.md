@@ -70,7 +70,7 @@ Priority: env vars → `.env` → `./fin-toolkit.yaml` → `~/.config/fin-toolki
 
 ### Search provider chain
 
-Fallback order: Perplexity → Tavily → Brave → Serper → Exa → DuckDuckGo → SearXNG.
+Fallback order: DuckDuckGo → SearXNG → Perplexity → Tavily → Brave → Serper → Exa.
 - Key-based: `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY`, `SERPER_API_KEY`, `EXA_API_KEY`
 - DuckDuckGo: always available, no API key (uses `ddgs` package, NOT `duckduckgo-search`)
 - SearXNG: self-hosted via Docker, `search.searxng_url` in config (default `http://localhost:8888`)

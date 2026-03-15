@@ -26,7 +26,7 @@ class SearchConfig(BaseModel):
 
     providers: list[str] = Field(
         default_factory=lambda: [
-            "perplexity", "tavily", "brave", "serper", "exa", "duckduckgo", "searxng",
+            "duckduckgo", "searxng", "perplexity", "tavily", "brave", "serper", "exa",
         ],
     )
     searxng_url: str = "http://localhost:8888"

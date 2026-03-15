@@ -91,7 +91,17 @@ def _serve() -> None:
     search_list: list[SearchProvider] = []
     available_search = config.available_search_providers()
 
-    # Key-based providers: import and add if key is available
+    # DuckDuckGo first: always available, no key needed
+    if "duckduckgo" in available_search:
+        from fin_toolkit.providers.duckduckgo import DuckDuckGoSearchProvider
+        search_list.append(DuckDuckGoSearchProvider())
+
+    # SearXNG second: self-hosted, no key needed
+    if "searxng" in available_search:
+        from fin_toolkit.providers.searxng import SearXNGProvider
+        search_list.append(SearXNGProvider(base_url=config.search.searxng_url))
+
+    # Key-based providers: added after free defaults
     _key_providers: list[tuple[str, str, type]] = []
     if "perplexity" in available_search:
         from fin_toolkit.providers.perplexity import PerplexitySearchProvider
@@ -115,16 +125,6 @@ def _serve() -> None:
         )
         if api_key:
             search_list.append(cls(api_key=api_key))
-
-    # DuckDuckGo: always available, no key needed
-    if "duckduckgo" in available_search:
-        from fin_toolkit.providers.duckduckgo import DuckDuckGoSearchProvider
-        search_list.append(DuckDuckGoSearchProvider())
-
-    # SearXNG: self-hosted, no key needed
-    if "searxng" in available_search:
-        from fin_toolkit.providers.searxng import SearXNGProvider
-        search_list.append(SearXNGProvider(base_url=config.search.searxng_url))
 
     search_router = SearchRouter(search_list) if search_list else None
 
