@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
 
 from fin_toolkit.analysis.fundamental import FundamentalAnalyzer
 from fin_toolkit.analysis.technical import TechnicalAnalyzer
@@ -12,12 +11,21 @@ from fin_toolkit.providers.protocol import DataProvider
 
 
 class CathieWoodAgent:
-    """Agent inspired by Cathie Wood's innovation-driven growth investing.
+    """Agent inspired by Cathie Wood's disruptive innovation investing.
+
+    ARK Invest's methodology: identify companies benefiting from
+    technological convergence across five innovation platforms (AI, energy
+    storage, robotics, genomics, blockchain).  5-year revenue models,
+    forward-looking growth potential over backward-looking metrics.
+
+    "We are looking for companies that are on the right side of change."
 
     Scoring blocks (max 100):
-        - Growth Signals (40): revenue reinvestment, margin expansion potential
-        - Innovation Premium (30): accepts high multiples if growth justifies it
-        - Market Position (30): gross margin as pricing power proxy
+        - Growth Signals (40): ROE, ROA, margin trajectory, reinvestment rate
+        - Innovation Premium (30): accepts high P/E for disruptors, rewards
+          cash burn for growth, FCF positive is bonus not requirement
+        - Market Position (30): gross margin (platform/network effects),
+          capital efficiency, manageable debt
     """
 
     _MAX_GROWTH = 40.0
@@ -50,12 +58,12 @@ class CathieWoodAgent:
         fund_result = self._fundamental.analyze(financials, metrics)
 
         # --- Growth Signals (max 40) ---
-        growth, g_missing = self._score_growth_signals(fund_result, metrics, warnings)
+        growth, g_missing = self._score_growth_signals(fund_result, warnings)
         if g_missing:
             missing_blocks += 1
 
         # --- Innovation Premium (max 30) ---
-        innovation, i_missing = self._score_innovation_premium(fund_result, metrics, warnings)
+        innovation, i_missing = self._score_innovation_premium(fund_result, warnings)
         if i_missing:
             missing_blocks += 1
 
@@ -75,7 +83,7 @@ class CathieWoodAgent:
             signal = "Bearish"
 
         rationale = (
-            f"Cathie Wood growth analysis for {ticker}: "
+            f"Cathie Wood disruptive growth analysis for {ticker}: "
             f"Growth Signals={growth:.1f}/{self._MAX_GROWTH}, "
             f"Innovation Premium={innovation:.1f}/{self._MAX_INNOVATION}, "
             f"Market Position={position:.1f}/{self._MAX_POSITION}"
@@ -101,13 +109,13 @@ class CathieWoodAgent:
     def _score_growth_signals(
         self,
         fund: FundamentalResult,
-        metrics: Any,
         warnings: list[str],
     ) -> tuple[float, bool]:
         """Growth signals: high ROE, reinvestment, margin expansion (max 40).
 
         Wood focuses on companies reinvesting heavily in innovation.
-        Low dividends + high ROE = reinvestment in growth.
+        Low/zero dividend yield = reinvesting in growth (positive signal).
+        High ROE + low dividends = efficient capital deployment.
         """
         score = 0.0
         available = 0
@@ -115,6 +123,7 @@ class CathieWoodAgent:
         roe = fund.profitability.get("roe")
         roa = fund.profitability.get("roa")
         net_margin = fund.profitability.get("net_margin")
+        div_yield = fund.valuation.get("dividend_yield")
 
         if roe is not None:
             available += 1
@@ -146,13 +155,24 @@ class CathieWoodAgent:
             available += 1
             # Improving margins signal scaling
             if net_margin >= 0.20:
-                score += 12.0
+                score += 10.0
             elif net_margin >= 0.10:
-                score += 8.0
+                score += 7.0
             elif net_margin >= 0.0:
                 score += 4.0  # breakeven is progress
             else:
                 score += 2.0  # not-yet-profitable innovators
+
+        # Low dividend yield = reinvesting in growth (Wood's preference)
+        if div_yield is not None:
+            available += 1
+            if div_yield == 0.0:
+                score += 5.0  # full reinvestment — ideal for growth
+            elif div_yield <= 0.01:
+                score += 3.0
+            elif div_yield <= 0.02:
+                score += 1.0
+            # High dividend yield = mature company, less innovation
 
         if available == 0:
             warnings.append("No data for growth signals assessment")
@@ -163,13 +183,13 @@ class CathieWoodAgent:
     def _score_innovation_premium(
         self,
         fund: FundamentalResult,
-        metrics: Any,
         warnings: list[str],
     ) -> tuple[float, bool]:
         """Innovation premium: growth justifies high multiples (max 30).
 
         Wood inverts traditional value logic: high PE can be bullish
-        if the company is disrupting a large market.
+        if the company is disrupting a large market.  Pre-profit
+        innovators are not penalized.
         """
         score = 0.0
         available = 0
@@ -224,9 +244,10 @@ class CathieWoodAgent:
     def _score_market_position(
         self, fund: FundamentalResult, warnings: list[str],
     ) -> tuple[float, bool]:
-        """Market position: gross margin as pricing power proxy (max 30).
+        """Market position: gross margin as platform/network effect proxy (max 30).
 
-        High gross margins suggest a differentiated product / platform.
+        High gross margins suggest a differentiated product, platform
+        economics, or network effects — key to disruptive scaling.
         """
         score = 0.0
         available = 0

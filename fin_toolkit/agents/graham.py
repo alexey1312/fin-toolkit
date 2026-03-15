@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
 
 from fin_toolkit.analysis.fundamental import FundamentalAnalyzer
 from fin_toolkit.analysis.technical import TechnicalAnalyzer
@@ -12,12 +11,21 @@ from fin_toolkit.providers.protocol import DataProvider
 
 
 class BenGrahamAgent:
-    """Agent inspired by Ben Graham's deep value investing principles.
+    """Agent inspired by Ben Graham's defensive value investing.
+
+    Based on Graham's 7 criteria from "The Intelligent Investor" Ch. 14:
+    1. Adequate size (not micro-cap)
+    2. Current ratio ≥ 2.0
+    3. Long-term debt ≤ net current assets
+    4. Positive earnings for 10 consecutive years
+    5. Uninterrupted dividends for 20+ years
+    6. P/E ≤ 15 (3-year avg earnings)
+    7. P/E × P/B ≤ 22.5 (the "Graham Number" rule)
 
     Scoring blocks (max 100):
-        - Net-Net Value (35): P/E, P/B below book, FCF yield
-        - Earnings Stability (30): consistent earnings, reasonable PE, dividends
-        - Financial Strength (35): current ratio ≥ 2, low debt, working capital
+        - Net-Net Value (35): P/E, P/B, Graham Number, FCF yield
+        - Earnings Stability (30): margins, dividend yield, moderate ROE
+        - Financial Strength (35): current ratio ≥ 2, low debt, interest coverage
     """
 
     _MAX_NET_NET = 35.0
@@ -50,17 +58,17 @@ class BenGrahamAgent:
         fund_result = self._fundamental.analyze(financials, metrics)
 
         # --- Net-Net Value (max 35) ---
-        net_net, nn_missing = self._score_net_net(fund_result, metrics, warnings)
+        net_net, nn_missing = self._score_net_net(fund_result, warnings)
         if nn_missing:
             missing_blocks += 1
 
         # --- Earnings Stability (max 30) ---
-        earnings, e_missing = self._score_earnings_stability(fund_result, metrics, warnings)
+        earnings, e_missing = self._score_earnings_stability(fund_result, warnings)
         if e_missing:
             missing_blocks += 1
 
         # --- Financial Strength (max 35) ---
-        strength, s_missing = self._score_financial_strength(fund_result, metrics, warnings)
+        strength, s_missing = self._score_financial_strength(fund_result, warnings)
         if s_missing:
             missing_blocks += 1
 
@@ -75,7 +83,7 @@ class BenGrahamAgent:
             signal = "Bearish"
 
         rationale = (
-            f"Ben Graham value analysis for {ticker}: "
+            f"Ben Graham defensive value analysis for {ticker}: "
             f"Net-Net={net_net:.1f}/{self._MAX_NET_NET}, "
             f"Earnings Stability={earnings:.1f}/{self._MAX_EARNINGS}, "
             f"Financial Strength={strength:.1f}/{self._MAX_STRENGTH}"
@@ -101,12 +109,12 @@ class BenGrahamAgent:
     def _score_net_net(
         self,
         fund: FundamentalResult,
-        metrics: Any,
         warnings: list[str],
     ) -> tuple[float, bool]:
-        """Net-net value: P/B below book, low P/E, FCF yield (max 35).
+        """Net-net value: P/B below book, low P/E, Graham Number (max 35).
 
-        Graham insisted on buying below net current asset value.
+        Graham's rule: P/E × P/B should not exceed 22.5.
+        Buying below net current asset value is ideal.
         """
         score = 0.0
         available = 0
@@ -131,13 +139,22 @@ class BenGrahamAgent:
             available += 1
             # Graham: P/E should not exceed 15
             if pe <= 0:
-                score += 0.0
+                pass  # negative earnings
             elif pe <= 10:
                 score += 12.0
             elif pe <= 15:
                 score += 8.0
             elif pe <= 20:
                 score += 3.0
+
+        # Graham Number: P/E × P/B should not exceed 22.5
+        if pe is not None and pb is not None and pe > 0:
+            graham_product = pe * pb
+            if graham_product <= 15.0:
+                score += 5.0
+            elif graham_product <= 22.5:
+                score += 3.0
+            # > 22.5 → fails Graham's criterion, no bonus
 
         if fcf_yield is not None:
             available += 1
@@ -159,12 +176,13 @@ class BenGrahamAgent:
     def _score_earnings_stability(
         self,
         fund: FundamentalResult,
-        metrics: Any,
         warnings: list[str],
     ) -> tuple[float, bool]:
-        """Earnings stability: positive earnings, reasonable margins (max 30).
+        """Earnings stability: positive earnings, dividends, margins (max 30).
 
-        Graham required 10 years of positive earnings; we proxy with margin health.
+        Graham required 10 years of positive earnings and 20 years of
+        uninterrupted dividends.  We proxy with margin health and
+        dividend yield as stability signals.
         """
         score = 0.0
         available = 0
@@ -172,35 +190,45 @@ class BenGrahamAgent:
         net_margin = fund.profitability.get("net_margin")
         roe = fund.profitability.get("roe")
         gross_margin = fund.profitability.get("gross_margin")
+        div_yield = fund.valuation.get("dividend_yield")
 
         if net_margin is not None:
             available += 1
             # Positive and stable earnings
             if net_margin >= 0.10:
-                score += 12.0
+                score += 10.0
             elif net_margin >= 0.05:
-                score += 8.0
+                score += 7.0
             elif net_margin > 0:
-                score += 4.0
-            # Negative = 0
+                score += 3.0
 
         if roe is not None:
             available += 1
-            # Moderate ROE preferred (not excessively high = risky)
+            # Moderate ROE preferred (not excessively high = risky leverage)
             if 0.10 <= roe <= 0.25:
-                score += 10.0
+                score += 8.0
             elif roe > 0.25:
-                score += 6.0  # too high may indicate leverage
+                score += 5.0  # too high may indicate leverage
             elif roe >= 0.05:
-                score += 4.0
+                score += 3.0
 
         if gross_margin is not None:
             available += 1
             if gross_margin >= 0.30:
-                score += 8.0
+                score += 6.0
             elif gross_margin >= 0.20:
-                score += 5.0
+                score += 4.0
             elif gross_margin >= 0.10:
+                score += 2.0
+
+        # Dividend yield — Graham valued uninterrupted dividends
+        if div_yield is not None:
+            available += 1
+            if div_yield >= 0.04:
+                score += 6.0
+            elif div_yield >= 0.02:
+                score += 4.0
+            elif div_yield > 0:
                 score += 2.0
 
         if available == 0:
@@ -212,12 +240,12 @@ class BenGrahamAgent:
     def _score_financial_strength(
         self,
         fund: FundamentalResult,
-        metrics: Any,
         warnings: list[str],
     ) -> tuple[float, bool]:
         """Financial strength: current ratio ≥ 2, low debt (max 35).
 
-        Graham's rule: current assets should be at least 2× current liabilities.
+        Graham's classic rules: current assets ≥ 2× current liabilities,
+        long-term debt ≤ net current assets, adequate interest coverage.
         """
         score = 0.0
         available = 0
@@ -225,6 +253,7 @@ class BenGrahamAgent:
         current_ratio = fund.stability.get("current_ratio")
         debt_to_equity = fund.stability.get("debt_to_equity")
         roa = fund.profitability.get("roa")
+        interest_coverage = fund.stability.get("interest_coverage")
 
         if current_ratio is not None:
             available += 1
@@ -256,6 +285,16 @@ class BenGrahamAgent:
                 score += 5.0
             elif roa >= 0.02:
                 score += 2.0
+
+        # Interest coverage — Graham's defensive criterion
+        if interest_coverage is not None and interest_coverage > 0:
+            available += 1
+            if interest_coverage >= 10.0:
+                score += 5.0
+            elif interest_coverage >= 5.0:
+                score += 3.0
+            elif interest_coverage >= 2.0:
+                score += 1.0
 
         if available == 0:
             warnings.append("No data for financial strength assessment")

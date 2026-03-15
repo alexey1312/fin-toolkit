@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
 
 from fin_toolkit.analysis.fundamental import FundamentalAnalyzer
 from fin_toolkit.analysis.technical import TechnicalAnalyzer
@@ -12,12 +11,20 @@ from fin_toolkit.providers.protocol import DataProvider
 
 
 class PeterLynchAgent:
-    """Agent inspired by Peter Lynch's GARP (Growth at a Reasonable Price) approach.
+    """Agent inspired by Peter Lynch's GARP (Growth at a Reasonable Price).
+
+    Lynch classified stocks into six categories: slow growers, stalwarts,
+    fast growers, cyclicals, asset plays, and turnarounds.  His primary
+    tool is the PEG ratio (P/E ÷ earnings growth rate), where PEG < 1 is
+    a bargain.  He also used dividend-adjusted PEG:
+        PEG_adj = P/E ÷ (growth% + dividend_yield%)
+
+    "Know what you own, and know why you own it."
 
     Scoring blocks (max 100):
-        - PEG Value (35): P/E relative to growth (using ROE as growth proxy)
-        - Earnings Quality (35): strong margins, consistent profitability
-        - Common Sense (30): reasonable debt, positive cash flow, solid balance sheet
+        - PEG Value (35): PEG ratio, dividend-adjusted PEG, P/B, FCF yield
+        - Earnings Quality (35): ROE, ROIC, margins, consistent profitability
+        - Common Sense (30): reasonable debt, cash flow, interest coverage
     """
 
     _MAX_PEG = 35.0
@@ -50,7 +57,7 @@ class PeterLynchAgent:
         fund_result = self._fundamental.analyze(financials, metrics)
 
         # --- PEG Value (max 35) ---
-        peg, peg_missing = self._score_peg_value(fund_result, metrics, warnings)
+        peg, peg_missing = self._score_peg_value(fund_result, warnings)
         if peg_missing:
             missing_blocks += 1
 
@@ -60,7 +67,7 @@ class PeterLynchAgent:
             missing_blocks += 1
 
         # --- Common Sense (max 30) ---
-        common, c_missing = self._score_common_sense(fund_result, metrics, warnings)
+        common, c_missing = self._score_common_sense(fund_result, warnings)
         if c_missing:
             missing_blocks += 1
 
@@ -101,26 +108,30 @@ class PeterLynchAgent:
     def _score_peg_value(
         self,
         fund: FundamentalResult,
-        metrics: Any,
         warnings: list[str],
     ) -> tuple[float, bool]:
-        """PEG-style value: P/E relative to growth proxy (max 35).
+        """PEG-style value: P/E relative to growth (max 35).
 
-        Lynch's famous rule: PEG < 1 is a bargain, PEG > 2 is overpriced.
-        We approximate growth rate from ROE (sustainable growth = ROE × retention).
+        Lynch's rule: PEG < 1 is a bargain, PEG > 2 is overpriced.
+        Dividend-adjusted PEG = P/E ÷ (growth% + dividend_yield%).
+        Growth rate is approximated from ROE (sustainable growth ≈ ROE).
         """
         score = 0.0
         available = 0
 
         pe = fund.valuation.get("pe_ratio")
         roe = fund.profitability.get("roe")
+        div_yield = fund.valuation.get("dividend_yield")
 
         if pe is not None and roe is not None and roe > 0:
             available += 1
             # Implied growth rate ≈ ROE (assuming high retention)
             growth_pct = roe * 100  # e.g., ROE 0.20 → 20% growth
-            if growth_pct > 0 and pe > 0:
-                peg_ratio = pe / growth_pct
+            # Dividend-adjusted PEG (Lynch's actual formula)
+            div_pct = (div_yield or 0.0) * 100
+            adjusted_growth = growth_pct + div_pct
+            if adjusted_growth > 0 and pe > 0:
+                peg_ratio = pe / adjusted_growth
                 if peg_ratio <= 0.5:
                     score += 20.0
                 elif peg_ratio <= 1.0:
@@ -134,7 +145,7 @@ class PeterLynchAgent:
             available += 1
             # Fallback: just use PE
             if pe <= 0:
-                score += 0.0
+                pass
             elif pe <= 15:
                 score += 12.0
             elif pe <= 25:
@@ -171,7 +182,8 @@ class PeterLynchAgent:
     ) -> tuple[float, bool]:
         """Earnings quality: strong, consistent profitability (max 35).
 
-        Lynch: 'Know what you own, and know why you own it.'
+        Lynch: "Know what you own, and know why you own it."
+        ROIC indicates capital efficiency beyond simple profitability.
         """
         score = 0.0
         available = 0
@@ -180,6 +192,7 @@ class PeterLynchAgent:
         net_margin = fund.profitability.get("net_margin")
         gross_margin = fund.profitability.get("gross_margin")
         roa = fund.profitability.get("roa")
+        roic = fund.profitability.get("roic")
 
         if roe is not None:
             available += 1
@@ -221,6 +234,16 @@ class PeterLynchAgent:
             elif roa >= 0.04:
                 score += 1.0
 
+        # ROIC — capital efficiency (Lynch valued understanding the business)
+        if roic is not None:
+            available += 1
+            if roic >= 0.15:
+                score += 5.0
+            elif roic >= 0.10:
+                score += 3.0
+            elif roic >= 0.05:
+                score += 1.0
+
         if available == 0:
             warnings.append("No earnings data for quality assessment")
             return 0.0, True
@@ -230,13 +253,12 @@ class PeterLynchAgent:
     def _score_common_sense(
         self,
         fund: FundamentalResult,
-        metrics: Any,
         warnings: list[str],
     ) -> tuple[float, bool]:
         """Common sense checks: debt, cash flow, balance sheet health (max 30).
 
-        Lynch: 'Go for a business that any idiot can run — because sooner
-        or later, any idiot probably is going to run it.'
+        Lynch: "Go for a business that any idiot can run — because sooner
+        or later, any idiot probably is going to run it."
         """
         score = 0.0
         available = 0
@@ -244,6 +266,7 @@ class PeterLynchAgent:
         debt_to_equity = fund.stability.get("debt_to_equity")
         current_ratio = fund.stability.get("current_ratio")
         fcf_yield = fund.valuation.get("fcf_yield")
+        interest_coverage = fund.stability.get("interest_coverage")
 
         if debt_to_equity is not None:
             available += 1
@@ -257,11 +280,11 @@ class PeterLynchAgent:
         if current_ratio is not None:
             available += 1
             if current_ratio >= 2.0:
-                score += 10.0
+                score += 8.0
             elif current_ratio >= 1.5:
-                score += 7.0
+                score += 5.0
             elif current_ratio >= 1.0:
-                score += 3.0
+                score += 2.0
 
         if fcf_yield is not None:
             available += 1
@@ -272,6 +295,16 @@ class PeterLynchAgent:
                 score += 5.0
             elif fcf_yield > 0:
                 score += 2.0
+
+        # Interest coverage — can the business handle its debt?
+        if interest_coverage is not None and interest_coverage > 0:
+            available += 1
+            if interest_coverage >= 10.0:
+                score += 5.0
+            elif interest_coverage >= 5.0:
+                score += 3.0
+            elif interest_coverage >= 2.0:
+                score += 1.0
 
         if available == 0:
             warnings.append("No data for common sense assessment")
