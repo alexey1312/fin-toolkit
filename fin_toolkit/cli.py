@@ -12,8 +12,8 @@ import yaml
 
 # Default MCP server entry
 _MCP_SERVER_ENTRY: dict[str, Any] = {
-    "command": "uvx",
-    "args": ["fin-toolkit", "serve"],
+    "command": "uv",
+    "args": ["run", "--project", str(Path(__file__).resolve().parent.parent), "fin-toolkit", "serve"],
 }
 
 # Default config content

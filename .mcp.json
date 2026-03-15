@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "fin-toolkit": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "/Users/aleksei/Developer/axel",
+        "fin-toolkit",
+        "serve"
+      ]
+    }
+  }
+}

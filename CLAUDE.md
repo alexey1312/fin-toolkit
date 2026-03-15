@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start.
 
+- `fin-toolkit setup` registers the server in `.mcp.json` (local) or `~/.claude.json` (with `--global`)
+- MCP entry uses `uv run --project <path>` (NOT `uvx` — package is not on PyPI)
+- `fin-toolkit status` shows provider/agent availability
+
 ## Development
 
 - `mise install && uv sync` to set up
@@ -37,6 +41,12 @@ New providers/agents implement the protocol; no base class inheritance needed.
 ### MCP server wiring
 
 `mcp_server/server.py` uses module-level globals initialized by `init_server()`. The CLI (`cli.py`) builds all dependencies (providers, analyzers, registry) and passes them to `init_server()` before calling `server.run()`.
+
+### Analysis agents
+
+- `elvis_marlamov` — fundamentals + sentiment scoring (quality/stability/valuation/sentiment)
+- `warren_buffett` — value investing (margin of safety/durable advantage/management quality)
+- New agents: implement `AnalysisAgent` protocol, add to `AgentRegistry._AGENT_FACTORIES` + `_load_agents()`, list in config `agents.active`
 
 ### Exception hierarchy
 
