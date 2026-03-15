@@ -13,7 +13,7 @@
 > **Subagent A** — работает на main напрямую, все остальные ждут.
 > **Commit**: `feat: scaffold fin-toolkit with mise + uv + pitchfork`
 
-- [ ] 1.1 Создать `mise.toml`:
+- [x] 1.1 Создать `mise.toml`:
   ```toml
   [tools]
   python = "3.11"
@@ -24,11 +24,11 @@
   [settings]
   python.uv_venv_auto = "create|source"
   ```
-- [ ] 1.2 Инициализировать uv-проект: `uv init` (в текущей директории) → `pyproject.toml`
-- [ ] 1.3 Добавить зависимости в `pyproject.toml`:
+- [x] 1.2 Инициализировать uv-проект: `uv init` (в текущей директории) → `pyproject.toml`
+- [x] 1.3 Добавить зависимости в `pyproject.toml`:
   - runtime: yfinance, pandas, ta, fastmcp, pydantic, httpx, beautifulsoup4, python-dotenv, pyyaml
   - dev: pytest, pytest-cov, pytest-asyncio, mypy, ruff
-- [ ] 1.4 Создать структуру пакета:
+- [x] 1.4 Создать структуру пакета:
   ```
   fin_toolkit/
   ├── __init__.py
@@ -54,18 +54,18 @@
   ├── portfolio-review/
   └── kase-analysis/
   ```
-- [ ] 1.5 Создать `pitchfork.toml`:
+- [x] 1.5 Создать `pitchfork.toml`:
   ```toml
   [daemons.fin-toolkit-mcp]
   run = "uv run fin-toolkit serve"
   auto = ["start", "stop"]
   ready_output = "MCP server started"
   ```
-- [ ] 1.6 Создать базовый `fin-toolkit.yaml` с default-конфигурацией
-- [ ] 1.7 Настроить pytest (`pyproject.toml`): `testpaths`, `asyncio_mode = "auto"`, coverage config
-- [ ] 1.8 Настроить ruff + mypy в `pyproject.toml`
-- [ ] 1.9 Создать `tests/conftest.py` с shared mock fixtures (mock price data, mock financials)
-- [ ] 1.10 **Validate**: `uv sync && uv run pytest` green (пустой тест)
+- [x] 1.6 Создать базовый `fin-toolkit.yaml` с default-конфигурацией
+- [x] 1.7 Настроить pytest (`pyproject.toml`): `testpaths`, `asyncio_mode = "auto"`, coverage config
+- [x] 1.8 Настроить ruff + mypy в `pyproject.toml`
+- [x] 1.9 Создать `tests/conftest.py` с shared mock fixtures (mock price data, mock financials)
+- [x] 1.10 **Validate**: `uv sync && uv run pytest` green (пустой тест)
 
 ---
 
@@ -74,12 +74,12 @@
 > **Subagent A** (продолжение) — базовые типы нужны всем worktrees.
 > **Commit**: `feat: add typed Pydantic models and custom exceptions`
 
-- [ ] 2.1 **Тесты**: `tests/test_models/test_price_data.py` — PricePoint, PriceData creation, .model_dump(), validation
-- [ ] 2.2 **Тесты**: `tests/test_models/test_financial_models.py` — FinancialStatements, KeyMetrics, None fields
-- [ ] 2.3 **Тесты**: `tests/test_models/test_results.py` — TechnicalResult (все indicator fields + signals + overall_bias + warnings), FundamentalResult (profitability/valuation/stability dicts + sector_comparison + warnings), RiskResult (volatility_30d/90d/252d + var_95/99 + warnings), AgentResult (signal/score/confidence/rationale/breakdown/warnings), CorrelationResult (tickers + matrix + warnings), SearchResult (title/url/snippet/published_date)
-- [ ] 2.4 **Impl**: `fin_toolkit/models/` — все Pydantic-модели с полными field definitions
-- [ ] 2.5 **Impl**: `fin_toolkit/exceptions.py` — TickerNotFoundError, ProviderUnavailableError, AllProvidersFailedError, ProviderConfigError, InsufficientDataError, AgentNotFoundError, ConfigError
-- [ ] 2.6 **Validate**: `uv run pytest` green, `uv run mypy` clean
+- [x] 2.1 **Тесты**: `tests/test_models/test_price_data.py` — PricePoint, PriceData creation, .model_dump(), validation
+- [x] 2.2 **Тесты**: `tests/test_models/test_financial_models.py` — FinancialStatements, KeyMetrics, None fields
+- [x] 2.3 **Тесты**: `tests/test_models/test_results.py` — TechnicalResult (все indicator fields + signals + overall_bias + warnings), FundamentalResult (profitability/valuation/stability dicts + sector_comparison + warnings), RiskResult (volatility_30d/90d/252d + var_95/99 + warnings), AgentResult (signal/score/confidence/rationale/breakdown/warnings), CorrelationResult (tickers + matrix + warnings), SearchResult (title/url/snippet/published_date)
+- [x] 2.4 **Impl**: `fin_toolkit/models/` — все Pydantic-модели с полными field definitions
+- [x] 2.5 **Impl**: `fin_toolkit/exceptions.py` — TickerNotFoundError, ProviderUnavailableError, AllProvidersFailedError, ProviderConfigError, InsufficientDataError, AgentNotFoundError, ConfigError
+- [x] 2.6 **Validate**: `uv run pytest` green, `uv run mypy` clean
 
 ---
 
@@ -88,12 +88,12 @@
 > **Subagent A** (продолжение) — конфиг нужен провайдерам во всех worktrees.
 > **Commit**: `feat: add YAML config system with Pydantic validation`
 
-- [ ] 3.1 **Тесты**: `tests/test_config/test_config.py` — валидный конфиг, невалидный, missing file, env override, rate limit defaults, auto-detection, **market mapping**, **config priority: env > .env > yaml > defaults**
-- [ ] 3.2 **Impl**: Pydantic config models: `DataConfig`, `SearchConfig`, `AgentsConfig`, `RateLimitConfig`, `MarketsConfig`, `ToolkitConfig`. `MarketsConfig` включает market-to-provider mapping (e.g. `markets.kz.tickers: [KCEL, KZTO, ...], markets.kz.provider: kase`)
-- [ ] 3.3 **Impl**: загрузка `fin-toolkit.yaml` + `.env` + fallback на defaults
-- [ ] 3.4 **Impl**: auto-detection доступных провайдеров на основе ключей
-- [ ] 3.5 **Validate**: green build
-- [ ] 3.6 **Orchestrator**: Это "base commit" — все worktrees создаются от этой точки
+- [x] 3.1 **Тесты**: `tests/test_config/test_config.py` — валидный конфиг, невалидный, missing file, env override, rate limit defaults, auto-detection, **market mapping**, **config priority: env > .env > yaml > defaults**
+- [x] 3.2 **Impl**: Pydantic config models: `DataConfig`, `SearchConfig`, `AgentsConfig`, `RateLimitConfig`, `MarketsConfig`, `ToolkitConfig`. `MarketsConfig` включает market-to-provider mapping (e.g. `markets.kz.tickers: [KCEL, KZTO, ...], markets.kz.provider: kase`)
+- [x] 3.3 **Impl**: загрузка `fin-toolkit.yaml` + `.env` + fallback на defaults
+- [x] 3.4 **Impl**: auto-detection доступных провайдеров на основе ключей
+- [x] 3.5 **Validate**: green build
+- [x] 3.6 **Orchestrator**: Это "base commit" — все worktrees создаются от этой точки
 
 ---
 
@@ -109,65 +109,65 @@
 > **Commit в ветку**: `feat: add DataProvider protocol, Yahoo and KASE providers`
 
 #### 4a. DataProvider Protocol (async) + Rate Limiter
-- [ ] 4.1 **Тесты**: `tests/test_providers/test_protocol.py` — mock async-класс с правильными методами удовлетворяет `@runtime_checkable` Protocol, isinstance check
-- [ ] 4.2 **Тесты**: `tests/test_providers/test_rate_limiter.py` — token bucket: requests_per_minute enforced (burst followed by throttle), max_concurrent via Semaphore, token refill over time
-- [ ] 4.3 **Impl**: `DataProvider` async Protocol definition с `@runtime_checkable`
-- [ ] 4.4 **Impl**: `TokenBucketRateLimiter` — async rate limiter (token bucket для requests_per_minute + asyncio.Semaphore для max_concurrent)
+- [x] 4.1 **Тесты**: `tests/test_providers/test_protocol.py` — mock async-класс с правильными методами удовлетворяет `@runtime_checkable` Protocol, isinstance check
+- [x] 4.2 **Тесты**: `tests/test_providers/test_rate_limiter.py` — token bucket: requests_per_minute enforced (burst followed by throttle), max_concurrent via Semaphore, token refill over time
+- [x] 4.3 **Impl**: `DataProvider` async Protocol definition с `@runtime_checkable`
+- [x] 4.4 **Impl**: `TokenBucketRateLimiter` — async rate limiter (token bucket для requests_per_minute + asyncio.Semaphore для max_concurrent)
 
 #### 4b. Yahoo Finance Provider
-- [ ] 4.5 **Тесты**: `tests/test_providers/test_yahoo.py` — get_prices (mock yfinance), get_financials, get_metrics, invalid ticker → TickerNotFoundError
-- [ ] 4.6 **Impl**: `YahooFinanceProvider` — async методы через `asyncio.to_thread` для синхронного yfinance, конвертация DataFrame → Pydantic models
+- [x] 4.5 **Тесты**: `tests/test_providers/test_yahoo.py` — get_prices (mock yfinance), get_financials, get_metrics, invalid ticker → TickerNotFoundError
+- [x] 4.6 **Impl**: `YahooFinanceProvider` — async методы через `asyncio.to_thread` для синхронного yfinance, конвертация DataFrame → Pydantic models
 
 #### 4c. KASE Scraper Provider
-- [ ] 4.7 **Тесты**: `tests/test_providers/test_kase.py` — snapshot HTML fixtures, get_prices, get_financials (None для недоступных), HTTP error handling
-- [ ] 4.8 **Impl**: `KASEProvider` — httpx + BS4, парсинг kase.kz, graceful degradation
+- [x] 4.7 **Тесты**: `tests/test_providers/test_kase.py` — snapshot HTML fixtures, get_prices, get_financials (None для недоступных), HTTP error handling
+- [x] 4.8 **Impl**: `KASEProvider` — httpx + BS4, парсинг kase.kz, graceful degradation
 
 #### 4d. Provider Router
-- [ ] 4.9 **Тесты**: `tests/test_providers/test_router.py` — primary succeeds, primary fails → fallback, all fail → AllProvidersFailedError, **market mapping: KZ ticker → KASE provider**, explicit provider parameter override, unknown ticker → fallback chain
-- [ ] 4.10 **Impl**: `ProviderRouter` с market-based routing + fallback chain. Routing order: (1) explicit `provider` param, (2) market mapping из конфига (`markets.kz.tickers`), (3) primary → fallback chain
-- [ ] 4.11 **Validate в worktree**: `uv run pytest tests/test_providers/ tests/test_models/ tests/test_config/ && uv run mypy && uv run ruff check`
+- [x] 4.9 **Тесты**: `tests/test_providers/test_router.py` — primary succeeds, primary fails → fallback, all fail → AllProvidersFailedError, **market mapping: KZ ticker → KASE provider**, explicit provider parameter override, unknown ticker → fallback chain
+- [x] 4.10 **Impl**: `ProviderRouter` с market-based routing + fallback chain. Routing order: (1) explicit `provider` param, (2) market mapping из конфига (`markets.kz.tickers`), (3) primary → fallback chain
+- [x] 4.11 **Validate в worktree**: `uv run pytest tests/test_providers/ tests/test_models/ tests/test_config/ && uv run mypy && uv run ruff check`
 
 ### 5. Technical Analysis ║ [worktree: feat/technical-analysis]
 
 > **Subagent C** — `git worktree add ../ft-technical feat/technical-analysis`
 > **Commit в ветку**: `feat: add technical analysis module with ta library`
 
-- [ ] 5.1 **Тесты**: `tests/test_analysis/test_technical.py` — RSI (synthetic PriceData, known value), EMA 20/50/200, Bollinger Bands, MACD, insufficient data → None + warning, signals generation, overall_bias
-- [ ] 5.2 **Impl**: `TechnicalAnalyzer.analyze(price_data: PriceData) -> TechnicalResult` (внутренняя конвертация PriceData → DataFrame для `ta` library). Обёртка через `analysis/indicators.py` изолирует зависимость от `ta`
-- [ ] 5.3 **Impl**: signal generation logic (overbought/oversold, trend direction, overall bias)
-- [ ] 5.4 **Validate в worktree**: `uv run pytest tests/test_analysis/test_technical.py tests/test_models/ && uv run mypy && uv run ruff check`
+- [x] 5.1 **Тесты**: `tests/test_analysis/test_technical.py` — RSI (synthetic PriceData, known value), EMA 20/50/200, Bollinger Bands, MACD, insufficient data → None + warning, signals generation, overall_bias
+- [x] 5.2 **Impl**: `TechnicalAnalyzer.analyze(price_data: PriceData) -> TechnicalResult` (внутренняя конвертация PriceData → DataFrame для `ta` library). Обёртка через `analysis/indicators.py` изолирует зависимость от `ta`
+- [x] 5.3 **Impl**: signal generation logic (overbought/oversold, trend direction, overall bias)
+- [x] 5.4 **Validate в worktree**: `uv run pytest tests/test_analysis/test_technical.py tests/test_models/ && uv run mypy && uv run ruff check`
 
 ### 6. Fundamental Analysis ║ [worktree: feat/fundamental-analysis]
 
 > **Subagent D** — `git worktree add ../ft-fundamental feat/fundamental-analysis`
 > **Commit в ветку**: `feat: add fundamental analysis with sector medians`
 
-- [ ] 6.1 **Тесты**: `tests/test_analysis/test_fundamental.py` — profitability ratios, valuation ratios, stability ratios, missing data → None, sector comparison (known median vs value), unknown sector → None
-- [ ] 6.2 **Impl**: `FundamentalAnalyzer.analyze(financials, metrics, sector?) -> FundamentalResult`
-- [ ] 6.3 **Impl**: `fin_toolkit/references/sector_medians.json` — hardcoded Damodaran medians для 9 секторов (Technology, Finance, Healthcare, Energy, Consumer, Telecom, Materials, Industrials, Utilities)
-- [ ] 6.4 **Validate в worktree**: `uv run pytest tests/test_analysis/test_fundamental.py tests/test_models/ && uv run mypy && uv run ruff check`
+- [x] 6.1 **Тесты**: `tests/test_analysis/test_fundamental.py` — profitability ratios, valuation ratios, stability ratios, missing data → None, sector comparison (known median vs value), unknown sector → None
+- [x] 6.2 **Impl**: `FundamentalAnalyzer.analyze(financials, metrics, sector?) -> FundamentalResult`
+- [x] 6.3 **Impl**: `fin_toolkit/references/sector_medians.json` — hardcoded Damodaran medians для 9 секторов (Technology, Finance, Healthcare, Energy, Consumer, Telecom, Materials, Industrials, Utilities)
+- [x] 6.4 **Validate в worktree**: `uv run pytest tests/test_analysis/test_fundamental.py tests/test_models/ && uv run mypy && uv run ruff check`
 
 ### 7. Risk Analysis ║ [worktree: feat/risk-analysis]
 
 > **Subagent E** — `git worktree add ../ft-risk feat/risk-analysis`
 > **Commit в ветку**: `feat: add risk analysis module`
 
-- [ ] 7.1 **Тесты**: `tests/test_analysis/test_risk.py` — volatility (synthetic, known value), VaR, correlation matrix (3 tickers), Kelly Criterion, edge cases (insufficient data, negative Kelly → 0.0)
-- [ ] 7.2 **Impl**: `calculate_volatility(price_data, window)`, `calculate_var(price_data, confidence, horizon_days)`
-- [ ] 7.3 **Impl**: `correlation_matrix(prices: dict[str, PriceData]) -> CorrelationResult`
-- [ ] 7.4 **Impl**: `kelly_criterion(win_rate, win_loss_ratio) -> float`
-- [ ] 7.5 **Validate в worktree**: `uv run pytest tests/test_analysis/test_risk.py tests/test_models/ && uv run mypy && uv run ruff check`
+- [x] 7.1 **Тесты**: `tests/test_analysis/test_risk.py` — volatility (synthetic, known value), VaR, correlation matrix (3 tickers), Kelly Criterion, edge cases (insufficient data, negative Kelly → 0.0)
+- [x] 7.2 **Impl**: `calculate_volatility(price_data, window)`, `calculate_var(price_data, confidence, horizon_days)`
+- [x] 7.3 **Impl**: `correlation_matrix(prices: dict[str, PriceData]) -> CorrelationResult`
+- [x] 7.4 **Impl**: `kelly_criterion(win_rate, win_loss_ratio) -> float`
+- [x] 7.5 **Validate в worktree**: `uv run pytest tests/test_analysis/test_risk.py tests/test_models/ && uv run mypy && uv run ruff check`
 
 ### ── Merge Gate 1 [orchestrator на main] ──
 
 > Orchestrator мержит ветки sequential, запускает FULL test suite после каждого merge.
 
-- [ ] MG1.1 `git merge feat/data-providers` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG1.2 `git merge feat/technical-analysis` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG1.3 `git merge feat/fundamental-analysis` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG1.4 `git merge feat/risk-analysis` → `uv run pytest` (ALL) → green? ✓
-- [ ] MG1.5 Cleanup worktrees: `git worktree remove`, delete branches
-- [ ] MG1.6 **Commit если нужен fix**: `fix: resolve integration issues from parallel merge`
+- [x] MG1.1 `git merge feat/data-providers` → `uv run pytest` (ALL) → green? ✓
+- [x] MG1.2 `git merge feat/technical-analysis` → `uv run pytest` (ALL) → green? ✓
+- [x] MG1.3 `git merge feat/fundamental-analysis` → `uv run pytest` (ALL) → green? ✓
+- [x] MG1.4 `git merge feat/risk-analysis` → `uv run pytest` (ALL) → green? ✓
+- [x] MG1.5 Cleanup worktrees: `git worktree remove`, delete branches
+- [x] MG1.6 **Commit если нужен fix**: `fix: resolve integration issues from parallel merge`
 
 ---
 
