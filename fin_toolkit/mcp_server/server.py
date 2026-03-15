@@ -296,7 +296,8 @@ async def run_agent(
 ) -> str:
     """Run an AI analysis agent on a stock ticker.
 
-    Available agents: elvis_marlamov, warren_buffett.
+    Available agents: elvis_marlamov, warren_buffett, ben_graham,
+    charlie_munger, cathie_wood, peter_lynch.
 
     Args:
         ticker: Stock ticker symbol.
