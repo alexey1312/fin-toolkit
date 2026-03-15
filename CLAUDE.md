@@ -23,6 +23,14 @@ This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start
 
 ## Architecture
 
+### yfinance data quirks
+
+- `Ticker.financials`/`.balance_sheet`/`.cashflow` DataFrames: columns=dates, index=field names (e.g. "Total Revenue", not "revenue")
+- `_df_to_dict()` in `yahoo.py` normalizes to flat `{field: value}` using `_FIELD_MAP`
+- `enterprise_value` lives in `.info["enterpriseValue"]`, NOT in balance_sheet DataFrame
+- Some fields are NaN for certain tickers (e.g. AAPL has no Interest Expense) — this is a data limitation, not a bug
+- 1 calendar year ≈ 250 trading days; period mapping uses 400 days buffer for 252-window volatility
+
 ### Protocol-first design
 
 All major boundaries are `typing.Protocol` classes with `@runtime_checkable`:
@@ -60,10 +68,18 @@ All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `
 
 Priority: env vars → `.env` → `./fin-toolkit.yaml` → `~/.config/fin-toolkit/config.yaml` → defaults.
 
+### Search provider chain
+
+Fallback order: Perplexity → Brave → SearXNG. Each needs configuration:
+- `PERPLEXITY_API_KEY` env var for Perplexity Sonar
+- `BRAVE_API_KEY` env var for Brave Search
+- SearXNG: `search.searxng_url` in config (default `http://localhost:8888`), self-hosted via Docker
+
 ## Testing
 
 - TDD: write tests first
 - Mock providers in unit tests; never hit real APIs without `@pytest.mark.live`
+- Mock financial data must match real yfinance structure (flat dict with normalized keys from `_FIELD_MAP`, not raw yfinance names)
 - Tests mirror source structure: `tests/test_providers/`, `tests/test_analysis/`, etc.
 - `asyncio_mode = "auto"` in pytest config — no need for `@pytest.mark.asyncio`
 - Coverage target: 80% (enforced by `fail_under` in pyproject.toml)
