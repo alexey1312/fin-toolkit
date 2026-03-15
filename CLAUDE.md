@@ -70,10 +70,11 @@ Priority: env vars → `.env` → `./fin-toolkit.yaml` → `~/.config/fin-toolki
 
 ### Search provider chain
 
-Fallback order: Perplexity → Brave → SearXNG. Each needs configuration:
-- `PERPLEXITY_API_KEY` env var for Perplexity Sonar
-- `BRAVE_API_KEY` env var for Brave Search
-- SearXNG: `search.searxng_url` in config (default `http://localhost:8888`), self-hosted via Docker
+Fallback order: Perplexity → Tavily → Brave → Serper → Exa → DuckDuckGo → SearXNG.
+- Key-based: `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY`, `SERPER_API_KEY`, `EXA_API_KEY`
+- DuckDuckGo: always available, no API key (uses `ddgs` package, NOT `duckduckgo-search`)
+- SearXNG: self-hosted via Docker, `search.searxng_url` in config (default `http://localhost:8888`)
+- New search provider: implement `SearchProvider` protocol (~50 LOC), add to `config/models.py` + `cli.py`
 
 ## Testing
 
