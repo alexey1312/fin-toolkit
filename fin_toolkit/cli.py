@@ -1,6 +1,40 @@
 """CLI entry point for fin-toolkit."""
 
+from __future__ import annotations
+
+import contextlib
+import json
 import sys
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+# Default MCP server entry
+_MCP_SERVER_ENTRY: dict[str, Any] = {
+    "command": "uvx",
+    "args": ["fin-toolkit", "serve"],
+}
+
+# Default config content
+_DEFAULT_CONFIG: dict[str, Any] = {
+    "data": {
+        "primary_provider": "yahoo",
+        "fallback_providers": ["fmp"],
+    },
+    "search": {
+        "providers": ["brave", "searxng"],
+        "searxng_url": "http://localhost:8888",
+    },
+    "agents": {
+        "active": ["elvis_marlamov", "warren_buffett"],
+    },
+}
+
+
+def _parse_setup_args() -> bool:
+    """Parse setup-specific args. Returns True if --global flag is set."""
+    return "--global" in sys.argv
 
 
 def main() -> None:
@@ -96,10 +130,109 @@ def _serve() -> None:
 
 
 def _setup() -> None:
-    """Set up MCP configuration."""
-    print("Setup not yet implemented")
+    """Set up MCP configuration and default config file."""
+    use_global = _parse_setup_args()
+
+    # 1. Write MCP JSON
+    target = Path.home() / ".claude.json" if use_global else Path.cwd() / ".mcp.json"
+
+    _write_mcp_entry(target)
+
+    # 2. Write default config if not exists
+    config_file = Path.home() / ".config" / "fin-toolkit" / "config.yaml"
+    if not config_file.exists():
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        content = yaml.dump(_DEFAULT_CONFIG, default_flow_style=False, sort_keys=False)
+        config_file.write_text(content)
+
+    if use_global:
+        print(f"Wrote MCP server entry to {target}")
+    else:
+        print(f"Wrote MCP server entry to {target}")
+    print(f"Config: {config_file}")
+
+
+def _write_mcp_entry(target: Path) -> None:
+    """Write the fin-toolkit MCP server entry into a JSON file, preserving existing content."""
+    existing: dict[str, Any] = {}
+    if target.exists():
+        try:
+            existing = json.loads(target.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+    servers = existing.get("mcpServers", {})
+    if "fin-toolkit" not in servers:
+        servers["fin-toolkit"] = _MCP_SERVER_ENTRY
+        existing["mcpServers"] = servers
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(existing, indent=2) + "\n")
 
 
 def _status() -> None:
     """Show toolkit status."""
-    print("Status not yet implemented")
+    home = Path.home()
+    cwd = Path.cwd()
+
+    # Determine config path
+    local_config = cwd / "fin-toolkit.yaml"
+    global_config = home / ".config" / "fin-toolkit" / "config.yaml"
+
+    if local_config.exists():
+        config_path = local_config
+    elif global_config.exists():
+        config_path = global_config
+    else:
+        config_path = None
+
+    print("fin-toolkit status")
+    print("=" * 40)
+
+    # Config path
+    if config_path:
+        print(f"Config: {config_path}")
+    else:
+        print("Config: (none found)")
+
+    # Load config for provider info
+    config_data: dict[str, Any] = {}
+    if config_path and config_path.exists():
+        with contextlib.suppress(yaml.YAMLError, OSError):
+            config_data = yaml.safe_load(config_path.read_text()) or {}
+
+    # .mcp.json
+    mcp_json = cwd / ".mcp.json"
+    if mcp_json.exists():
+        print(f".mcp.json: found ({mcp_json})")
+    else:
+        print(".mcp.json: not found")
+
+    # Data providers (always show all known ones)
+    import os
+
+    print("\nData providers:")
+    data_providers = ["yahoo", "kase", "fmp"]
+    key_free = {"yahoo", "kase"}
+    key_map = {"fmp": "FMP_API_KEY"}
+    for p in data_providers:
+        mark = "✓" if p in key_free or os.environ.get(key_map.get(p, ""), "") else "✗"
+        print(f"  {mark} {p}")
+
+    # Search providers
+    print("\nSearch providers:")
+    search_providers = ["brave", "searxng"]
+    search_key_map = {"brave": "BRAVE_API_KEY"}
+    for p in search_providers:
+        env_var = search_key_map.get(p, "")
+        mark = "✓" if p == "searxng" or os.environ.get(env_var, "") else "✗"
+        print(f"  {mark} {p}")
+
+    # Agents
+    agents_data = config_data.get("agents", {})
+    active = agents_data.get("active", [])
+    print("\nActive agents:")
+    if active:
+        for a in active:
+            print(f"  - {a}")
+    else:
+        print("  (none)")
