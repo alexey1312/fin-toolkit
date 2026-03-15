@@ -1,0 +1,4 @@
+[daemons.fin-toolkit-mcp]
+run = "uv run fin-toolkit serve"
+auto = ["start", "stop"]
+ready_output = "MCP server started"
