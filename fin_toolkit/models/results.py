@@ -1,5 +1,7 @@
 """Analysis result models."""
 
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -58,6 +60,41 @@ class AgentResult(BaseModel):
     confidence: float  # 0.0-1.0
     rationale: str
     breakdown: dict[str, float]
+    warnings: list[str]
+
+
+class ConsensusResult(BaseModel):
+    """Aggregated result from all active agents."""
+
+    agent_results: dict[str, AgentResult]
+    agent_errors: dict[str, str]
+    consensus_score: float  # 0-100, confidence-weighted avg
+    consensus_signal: str  # "Bullish" | "Neutral" | "Bearish"
+    consensus_confidence: float  # 0.0-1.0
+    agreement: float  # 0.0-1.0, fraction agreeing with consensus
+    warnings: list[str]
+
+
+class RecommendationResult(BaseModel):
+    """Consensus + risk + technical → position sizing."""
+
+    ticker: str
+    consensus: ConsensusResult
+    risk: RiskResult
+    technical: TechnicalResult
+    position_size_pct: float  # 0-25% portfolio
+    stop_loss_pct: float | None  # % below entry (3-15%)
+    recommendation: str  # human-readable summary
+    warnings: list[str]
+
+
+class PortfolioResult(BaseModel):
+    """Portfolio-level analysis with correlation adjustment."""
+
+    recommendations: dict[str, RecommendationResult]
+    adjusted_sizes: dict[str, float]  # ticker -> adjusted %
+    correlation: CorrelationResult
+    total_allocation_pct: float  # sum of adjusted_sizes
     warnings: list[str]
 
 

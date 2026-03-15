@@ -497,3 +497,243 @@ class TestRunAgent:
 
         parsed = json.loads(result)
         assert parsed["is_error"] is True
+
+
+# ---------------------------------------------------------------------------
+# run_all_agents
+# ---------------------------------------------------------------------------
+
+
+def _mock_registry_with_agents(
+    agents: dict[str, AgentResult | Exception],
+) -> MagicMock:
+    """Build a mock AgentRegistry with agents returning given results."""
+    mock_reg = MagicMock()
+    active: dict[str, AsyncMock] = {}
+    for name, result in agents.items():
+        mock_agent = AsyncMock()
+        if isinstance(result, Exception):
+            mock_agent.analyze.side_effect = result
+        else:
+            mock_agent.analyze.return_value = result
+        active[name] = mock_agent
+    mock_reg.get_active_agents.return_value = active
+    return mock_reg
+
+
+class TestRunAllAgents:
+    async def test_all_succeed(self) -> None:
+        from fin_toolkit.mcp_server.server import run_all_agents
+
+        agents = {
+            "buffett": _make_agent_result(),
+            "graham": AgentResult(
+                signal="Neutral", score=55.0, confidence=0.7,
+                rationale="OK", breakdown={}, warnings=[],
+            ),
+        }
+        mock_reg = _mock_registry_with_agents(agents)
+
+        with patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg):
+            result = await run_all_agents("AAPL", format="json")
+
+        parsed = json.loads(result)
+        assert "consensus_score" in parsed
+        assert "consensus_signal" in parsed
+        assert len(parsed["agent_results"]) == 2
+
+    async def test_partial_failure(self) -> None:
+        from fin_toolkit.mcp_server.server import run_all_agents
+
+        agents: dict[str, AgentResult | Exception] = {
+            "buffett": _make_agent_result(),
+            "graham": RuntimeError("provider timeout"),
+        }
+        mock_reg = _mock_registry_with_agents(agents)
+
+        with patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg):
+            result = await run_all_agents("AAPL", format="json")
+
+        parsed = json.loads(result)
+        assert len(parsed["agent_results"]) == 1
+        assert "graham" in parsed["agent_errors"]
+        assert parsed["consensus_score"] > 0
+
+    async def test_all_fail_returns_error(self) -> None:
+        from fin_toolkit.mcp_server.server import run_all_agents
+
+        agents: dict[str, AgentResult | Exception] = {
+            "buffett": RuntimeError("fail1"),
+            "graham": RuntimeError("fail2"),
+        }
+        mock_reg = _mock_registry_with_agents(agents)
+
+        with patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg):
+            result = await run_all_agents("AAPL", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+
+    async def test_empty_registry(self) -> None:
+        from fin_toolkit.mcp_server.server import run_all_agents
+
+        mock_reg = _mock_registry_with_agents({})
+
+        with patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg):
+            result = await run_all_agents("AAPL", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+
+
+# ---------------------------------------------------------------------------
+# run_recommendation
+# ---------------------------------------------------------------------------
+
+
+class TestRunRecommendation:
+    async def test_bullish_positive_size(self) -> None:
+        from fin_toolkit.mcp_server.server import run_recommendation
+
+        agents = {"buffett": _make_agent_result()}  # Bullish, 75, 0.8
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        mock_router.get_prices.return_value = _make_price_data("AAPL", 300)
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+        ):
+            result = await run_recommendation("AAPL", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["ticker"] == "AAPL"
+        assert parsed["position_size_pct"] > 0
+        assert "consensus" in parsed
+        assert "risk" in parsed
+
+    async def test_bearish_zero_size(self) -> None:
+        from fin_toolkit.mcp_server.server import run_recommendation
+
+        bearish = AgentResult(
+            signal="Bearish", score=20.0, confidence=0.9,
+            rationale="weak", breakdown={}, warnings=[],
+        )
+        agents = {"buffett": bearish}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        mock_router.get_prices.return_value = _make_price_data("AAPL", 300)
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+        ):
+            result = await run_recommendation("AAPL", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["position_size_pct"] == 0.0
+
+    async def test_provider_error(self) -> None:
+        from fin_toolkit.mcp_server.server import run_recommendation
+
+        mock_reg = _mock_registry_with_agents({"a": _make_agent_result()})
+        mock_router = AsyncMock()
+        mock_router.get_prices.side_effect = AllProvidersFailedError(
+            {"yahoo": "timeout"}
+        )
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+        ):
+            result = await run_recommendation("AAPL")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+
+
+# ---------------------------------------------------------------------------
+# run_portfolio_analysis
+# ---------------------------------------------------------------------------
+
+
+class TestRunPortfolioAnalysis:
+    async def test_two_tickers_happy_path(self) -> None:
+        from fin_toolkit.mcp_server.server import run_portfolio_analysis
+
+        agents = {"buffett": _make_agent_result()}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        mock_router.get_prices.side_effect = [
+            _make_price_data("AAPL", 300),
+            _make_price_data("MSFT", 300),
+        ]
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+        ):
+            result = await run_portfolio_analysis(
+                ["AAPL", "MSFT"], format="json",
+            )
+
+        parsed = json.loads(result)
+        assert "recommendations" in parsed
+        assert "adjusted_sizes" in parsed
+        assert "correlation" in parsed
+        assert parsed["total_allocation_pct"] >= 0
+
+    async def test_too_few_tickers_error(self) -> None:
+        from fin_toolkit.mcp_server.server import run_portfolio_analysis
+
+        result = await run_portfolio_analysis(["AAPL"], format="json")
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+        assert "at least 2" in parsed["error"]
+
+    async def test_too_many_tickers_error(self) -> None:
+        from fin_toolkit.mcp_server.server import run_portfolio_analysis
+
+        tickers = [f"T{i}" for i in range(11)]
+        result = await run_portfolio_analysis(tickers, format="json")
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+        assert "at most 10" in parsed["error"]
+
+    async def test_partial_failure(self) -> None:
+        from fin_toolkit.mcp_server.server import run_portfolio_analysis
+
+        agents = {"buffett": _make_agent_result()}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        # First succeeds, second fails
+        mock_router.get_prices.side_effect = [
+            _make_price_data("AAPL", 300),
+            AllProvidersFailedError({"yahoo": "timeout"}),
+        ]
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+        ):
+            result = await run_portfolio_analysis(
+                ["AAPL", "MSFT"], format="json",
+            )
+
+        parsed = json.loads(result)
+        # Should still return results for AAPL
+        assert "AAPL" in parsed["recommendations"]
+        assert "MSFT" not in parsed["recommendations"]
+        assert len(parsed["warnings"]) > 0

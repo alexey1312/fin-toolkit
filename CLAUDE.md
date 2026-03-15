@@ -65,6 +65,15 @@ All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON s
 - Agent scoring: each block has sub-metrics whose max sum may exceed block MAX; `min(MAX, score)` caps the block. This allows adding metrics without redistribution — preserve block names to avoid breaking tests.
 - Available FundamentalResult metrics: profitability (roe, roa, roic, net_margin, gross_margin), valuation (pe_ratio, pb_ratio, ev_ebitda, fcf_yield, dividend_yield), stability (debt_to_equity, current_ratio, interest_coverage)
 
+### Consensus & portfolio layer
+
+- `analysis/portfolio.py` — pure functions (no async/IO): `compute_consensus`, `compute_position_size`, `compute_stop_loss`, `adjust_position_sizes`
+- `_signal_from_score(score)` — shared threshold logic: ≥70 Bullish, ≥40 Neutral, <40 Bearish
+- `_run_consensus(ticker)` and `_run_single_recommendation(ticker, start, end)` — private async helpers in `server.py`, reused by `run_all_agents`, `run_recommendation`, `run_portfolio_analysis`
+- `AgentRegistry.get_active_agents()` returns all loaded agents; used by consensus to run them concurrently via `asyncio.gather(return_exceptions=True)`
+- Position sizing: volatility cap (5-25%) × confidence × signal multiplier × technical alignment, capped at base
+- Correlation adjustment: max pairwise |corr| → multiplier (0.70–1.10) applied to raw sizes
+
 ### Exception hierarchy
 
 All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `TickerNotFoundError`, `ProviderUnavailableError`, `AllProvidersFailedError`, `InsufficientDataError`, `AgentNotFoundError`.
@@ -101,6 +110,8 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - `asyncio_mode = "auto"` in pytest config — no need for `@pytest.mark.asyncio`
 - Coverage target: 80% (enforced by `fail_under` in pyproject.toml)
 - MCP tool tests that parse responses with `json.loads()` must pass `format="json"` (default is TOON)
+- `_mock_registry_with_agents(dict)` in `test_tools.py` — helper to build mock registry with agents returning given results/exceptions
+- Portfolio pure functions in `test_portfolio.py` are tested without mocks (no I/O); MCP tool tests mock `_agent_registry`, `_provider_router`, `_technical_analyzer`
 
 ## Code style
 

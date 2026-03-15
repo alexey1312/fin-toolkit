@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
@@ -11,6 +12,13 @@ from fastmcp import FastMCP
 
 from fin_toolkit.agents.registry import AgentRegistry
 from fin_toolkit.analysis.fundamental import FundamentalAnalyzer
+from fin_toolkit.analysis.portfolio import (
+    adjust_position_sizes,
+    compute_consensus,
+    compute_position_size,
+    compute_recommendation_text,
+    compute_stop_loss,
+)
 from fin_toolkit.analysis.risk import (
     calculate_var,
     calculate_volatility,
@@ -19,6 +27,14 @@ from fin_toolkit.analysis.risk import (
 from fin_toolkit.analysis.technical import TechnicalAnalyzer
 from fin_toolkit.exceptions import FinToolkitError
 from fin_toolkit.mcp_server.serialize import serialize
+from fin_toolkit.models.price_data import PriceData
+from fin_toolkit.models.results import (
+    ConsensusResult,
+    CorrelationResult,
+    PortfolioResult,
+    RecommendationResult,
+    RiskResult,
+)
 from fin_toolkit.providers.router import ProviderRouter
 from fin_toolkit.providers.search_router import SearchRouter
 
@@ -331,4 +347,211 @@ async def run_agent(
         return _error_response(str(exc))
     except Exception as exc:
         logger.exception("Unexpected error in run_agent")
+        return _error_response(f"Internal error: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Private helpers for consensus / recommendation / portfolio
+# ---------------------------------------------------------------------------
+
+
+async def _run_consensus(ticker: str) -> ConsensusResult:
+    """Run all active agents concurrently and compute consensus."""
+    assert _agent_registry is not None
+    agents = _agent_registry.get_active_agents()
+    if not agents:
+        return compute_consensus({}, {"_": "No active agents in registry"})
+
+    tasks = {name: ag.analyze(ticker) for name, ag in agents.items()}
+    results_raw = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    agent_results = {}
+    agent_errors = {}
+    for name, result in zip(tasks.keys(), results_raw, strict=True):
+        if isinstance(result, BaseException):
+            agent_errors[name] = str(result)
+        else:
+            agent_results[name] = result
+
+    return compute_consensus(agent_results, agent_errors)
+
+
+def _compute_risk(price_data: PriceData) -> RiskResult:
+    """Compute risk metrics from price data."""
+    warnings: list[str] = []
+    vol_30 = _safe_calculate(calculate_volatility, price_data, 30, warnings)
+    vol_90 = _safe_calculate(calculate_volatility, price_data, 90, warnings)
+    vol_252 = _safe_calculate(calculate_volatility, price_data, 252, warnings)
+    var_95 = _safe_calculate_var(price_data, 0.95, warnings)
+    var_99 = _safe_calculate_var(price_data, 0.99, warnings)
+    return RiskResult(
+        volatility_30d=vol_30,
+        volatility_90d=vol_90,
+        volatility_252d=vol_252,
+        var_95=var_95,
+        var_99=var_99,
+        warnings=warnings,
+    )
+
+
+async def _run_single_recommendation(
+    ticker: str, start: str, end: str,
+) -> tuple[RecommendationResult, PriceData]:
+    """Full recommendation for one ticker. Returns (result, price_data)."""
+    assert _provider_router is not None
+    assert _technical_analyzer is not None
+
+    consensus_task = _run_consensus(ticker)
+    prices_task = _provider_router.get_prices(ticker, start, end)
+    consensus, price_data = await asyncio.gather(consensus_task, prices_task)
+
+    risk = _compute_risk(price_data)
+    technical = _technical_analyzer.analyze(price_data)
+
+    position_size = compute_position_size(consensus, risk, technical)
+    stop_loss = compute_stop_loss(risk, technical)
+    recommendation = compute_recommendation_text(consensus, position_size, risk)
+
+    rec_warnings: list[str] = []
+    rec_warnings.extend(consensus.warnings)
+    rec_warnings.extend(risk.warnings)
+    rec_warnings.extend(technical.warnings)
+
+    result = RecommendationResult(
+        ticker=ticker,
+        consensus=consensus,
+        risk=risk,
+        technical=technical,
+        position_size_pct=position_size,
+        stop_loss_pct=stop_loss,
+        recommendation=recommendation,
+        warnings=rec_warnings,
+    )
+    return result, price_data
+
+
+# ---------------------------------------------------------------------------
+# Consensus / Recommendation / Portfolio tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool
+async def run_all_agents(ticker: str, format: str = "toon") -> str:
+    """Run all active analysis agents on a ticker and compute consensus.
+
+    Returns aggregated consensus score, signal, confidence, and per-agent results.
+
+    Args:
+        ticker: Stock ticker symbol.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        consensus = await _run_consensus(ticker)
+        if not consensus.agent_results:
+            return _error_response(
+                "All agents failed: "
+                + "; ".join(f"{k}: {v}" for k, v in consensus.agent_errors.items())
+            )
+        return serialize(consensus.model_dump(), format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in run_all_agents")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
+async def run_recommendation(
+    ticker: str, period: str = "1y", format: str = "toon",
+) -> str:
+    """Generate a buy/hold recommendation with position sizing for a ticker.
+
+    Combines consensus from all agents, risk analysis, and technical signals
+    to produce a position size (0-25% portfolio) and stop-loss level.
+
+    Args:
+        ticker: Stock ticker symbol.
+        period: Time period for price data - 1m, 3m, 6m, 1y, 2y, 5y.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        start, end = _period_to_dates(period)
+        result, _ = await _run_single_recommendation(ticker, start, end)
+        return serialize(result.model_dump(), format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in run_recommendation")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
+async def run_portfolio_analysis(
+    tickers: list[str], period: str = "1y", format: str = "toon",
+) -> str:
+    """Analyze a portfolio of tickers with correlation-adjusted position sizing.
+
+    Runs recommendations for each ticker, computes correlation matrix, and
+    adjusts position sizes based on pairwise correlations.
+
+    Args:
+        tickers: List of 2-10 stock ticker symbols.
+        period: Time period for price data.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        if len(tickers) < 2:
+            return _error_response("Portfolio analysis requires at least 2 tickers")
+        if len(tickers) > 10:
+            return _error_response("Portfolio analysis supports at most 10 tickers")
+
+        start, end = _period_to_dates(period)
+        tasks = [_run_single_recommendation(t, start, end) for t in tickers]
+        results_raw = await asyncio.gather(*tasks, return_exceptions=True)
+
+        recommendations: dict[str, RecommendationResult] = {}
+        prices_map: dict[str, PriceData] = {}
+        raw_sizes: dict[str, float] = {}
+        portfolio_warnings: list[str] = []
+
+        for ticker, result in zip(tickers, results_raw, strict=True):
+            if isinstance(result, BaseException):
+                portfolio_warnings.append(f"{ticker}: {result}")
+                continue
+            rec, price_data = result
+            recommendations[ticker] = rec
+            prices_map[ticker] = price_data
+            raw_sizes[ticker] = rec.position_size_pct
+
+        if not recommendations:
+            return _error_response(
+                "All tickers failed: " + "; ".join(portfolio_warnings)
+            )
+
+        # Correlation matrix from available price data
+        if len(prices_map) >= 2:
+            corr = correlation_matrix(prices_map)
+        else:
+            only_ticker = next(iter(prices_map))
+            corr = CorrelationResult(
+                tickers=[only_ticker],
+                matrix={only_ticker: {only_ticker: 1.0}},
+                warnings=["Only 1 ticker available; no correlation adjustment"],
+            )
+
+        adjusted = adjust_position_sizes(raw_sizes, corr)
+        total = sum(adjusted.values())
+
+        portfolio = PortfolioResult(
+            recommendations=recommendations,
+            adjusted_sizes=adjusted,
+            correlation=corr,
+            total_allocation_pct=total,
+            warnings=portfolio_warnings,
+        )
+        return serialize(portfolio.model_dump(), format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in run_portfolio_analysis")
         return _error_response(f"Internal error: {exc}")
