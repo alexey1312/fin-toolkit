@@ -59,6 +59,7 @@ DEFAULT_RATE_LIMITS: dict[str, RateLimitConfig] = {
     "yahoo": RateLimitConfig(requests_per_minute=5, max_concurrent=2),
     "kase": RateLimitConfig(requests_per_minute=2, max_concurrent=1),
     "fmp": RateLimitConfig(requests_per_minute=30, max_concurrent=5),
+    "financialdatasets": RateLimitConfig(requests_per_minute=30, max_concurrent=5),
     "brave": RateLimitConfig(requests_per_minute=10, max_concurrent=3),
 }
 
@@ -75,6 +76,7 @@ KEY_FREE_PROVIDERS = {"yahoo", "kase"}
 # Environment variable names for API keys
 PROVIDER_KEY_MAP: dict[str, str] = {
     "fmp": "FMP_API_KEY",
+    "financialdatasets": "FINANCIAL_DATASETS_API_KEY",
     "brave": "BRAVE_API_KEY",
     "perplexity": "PERPLEXITY_API_KEY",
     "tavily": "TAVILY_API_KEY",

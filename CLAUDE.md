@@ -69,6 +69,8 @@ All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `
 ### Config resolution
 
 Priority: env vars → `.env` → `./fin-toolkit.yaml` → `~/.config/fin-toolkit/config.yaml` → defaults.
+Config files are NOT merged — first found wins. API keys in global config are invisible if local config exists.
+`_status()` uses `load_config()` + `available_providers()` — do not duplicate availability logic.
 
 ### Search provider chain
 
@@ -79,6 +81,13 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - SearXNG: self-hosted via Docker, `search.searxng_url` in config (default `http://localhost:8888`)
 - New search provider: implement `SearchProvider` protocol (~50 LOC), add to `config/models.py` + `cli.py`
 - Google search provider has extra `model` param — wired separately from generic key-based loop in `cli.py`
+
+### Financial Datasets provider
+
+- REST API (`api.financialdatasets.ai`), auth via `X-API-KEY` header, key env var: `FINANCIAL_DATASETS_API_KEY`
+- API quirks: 301 redirects (needs `follow_redirects=True`), prices use `time` (ISO 8601) not `date`, metrics endpoint is `/financial-metrics/snapshot` (not `/financial-metrics`)
+- Field rename mapping in `_FIELD_RENAME`: `net_cash_flow_from_operations` → `operating_cash_flow`, `price_to_earnings_ratio` → `pe_ratio` (via `get_metrics`)
+- US equities only, 17k+ tickers, 30+ years history from SEC EDGAR
 
 ## Testing
 

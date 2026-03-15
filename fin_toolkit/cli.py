@@ -85,6 +85,15 @@ def _serve() -> None:
 
         providers["kase"] = KASEProvider()
 
+    if "financialdatasets" in available:
+        from fin_toolkit.providers.financialdatasets import FinancialDatasetsProvider
+
+        fd_key = config.api_keys.get("financialdatasets") or os.environ.get(
+            "FINANCIAL_DATASETS_API_KEY", "",
+        )
+        if fd_key:
+            providers["financialdatasets"] = FinancialDatasetsProvider(api_key=fd_key)
+
     provider_router = ProviderRouter(config=config, providers=providers)
 
     # Build search providers (order = fallback priority)
@@ -204,68 +213,46 @@ def _write_mcp_entry(target: Path) -> None:
 
 def _status() -> None:
     """Show toolkit status."""
-    home = Path.home()
+    from fin_toolkit.config.loader import load_config
+
+    config = load_config()
     cwd = Path.cwd()
-
-    # Determine config path
-    local_config = cwd / "fin-toolkit.yaml"
-    global_config = home / ".config" / "fin-toolkit" / "config.yaml"
-
-    if local_config.exists():
-        config_path = local_config
-    elif global_config.exists():
-        config_path = global_config
-    else:
-        config_path = None
 
     print("fin-toolkit status")
     print("=" * 40)
 
-    # Config path
-    if config_path:
-        print(f"Config: {config_path}")
-    else:
-        print("Config: (none found)")
-
-    # Load config for provider info
-    config_data: dict[str, Any] = {}
-    if config_path and config_path.exists():
-        with contextlib.suppress(yaml.YAMLError, OSError):
-            config_data = yaml.safe_load(config_path.read_text()) or {}
+    # Config path (replicate loader logic for display only)
+    local_config = cwd / "fin-toolkit.yaml"
+    global_config = Path.home() / ".config" / "fin-toolkit" / "config.yaml"
+    config_path = local_config if local_config.exists() else (
+        global_config if global_config.exists() else None
+    )
+    print(f"Config: {config_path or '(none found)'}")
 
     # .mcp.json
     mcp_json = cwd / ".mcp.json"
-    if mcp_json.exists():
-        print(f".mcp.json: found ({mcp_json})")
-    else:
-        print(".mcp.json: not found")
+    print(f".mcp.json: {'found (' + str(mcp_json) + ')' if mcp_json.exists() else 'not found'}")
 
-    # Data providers (always show all known ones)
-    import os
-
+    # Data providers
+    available_data = set(config.available_providers())
+    all_data = ["yahoo", "kase", "fmp", "financialdatasets"]
     print("\nData providers:")
-    data_providers = ["yahoo", "kase", "fmp"]
-    key_free = {"yahoo", "kase"}
-    key_map = {"fmp": "FMP_API_KEY"}
-    for p in data_providers:
-        mark = "✓" if p in key_free or os.environ.get(key_map.get(p, ""), "") else "✗"
+    for p in all_data:
+        mark = "✓" if p in available_data else "✗"
         print(f"  {mark} {p}")
 
     # Search providers
+    available_search = set(config.available_search_providers())
+    all_search = ["duckduckgo", "searxng", "google", "perplexity", "tavily", "brave", "serper", "exa"]
     print("\nSearch providers:")
-    search_providers = ["brave", "searxng"]
-    search_key_map = {"brave": "BRAVE_API_KEY"}
-    for p in search_providers:
-        env_var = search_key_map.get(p, "")
-        mark = "✓" if p == "searxng" or os.environ.get(env_var, "") else "✗"
+    for p in all_search:
+        mark = "✓" if p in available_search else "✗"
         print(f"  {mark} {p}")
 
     # Agents
-    agents_data = config_data.get("agents", {})
-    active = agents_data.get("active", [])
     print("\nActive agents:")
-    if active:
-        for a in active:
+    if config.agents.active:
+        for a in config.agents.active:
             print(f"  - {a}")
     else:
         print("  (none)")
