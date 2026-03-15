@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "fin-toolkit": {
+      "command": "uvx",
+      "args": ["fin-toolkit", "serve"]
+    }
+  }
+}
