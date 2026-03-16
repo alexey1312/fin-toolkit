@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start.
 
+- CLI is infrastructure-only (`serve`, `setup`, `status`) — all financial analysis is exposed exclusively via MCP tools
 - `fin-toolkit setup` registers the server in `.mcp.json` (local) or `~/.claude.json` (with `--global`)
 - MCP entry uses `uv run --project <path>` (NOT `uvx` — package is not on PyPI)
 - `fin-toolkit status` shows provider/agent availability

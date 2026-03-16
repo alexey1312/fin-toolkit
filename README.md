@@ -67,6 +67,18 @@ All MCP tools work out of the box — no API keys required (Yahoo Finance + Duck
 └──────────────────┘ └─────────────────────┘ └────────────────────────┘
 ```
 
+## CLI Commands
+
+CLI is infrastructure-only — it manages the server lifecycle, not analysis:
+
+| Command | Description |
+|---------|-------------|
+| `fin-toolkit serve` | Start the MCP server |
+| `fin-toolkit setup` | Register in `.mcp.json` (or `--global` for `~/.claude.json`) |
+| `fin-toolkit status` | Show available providers, search engines, and agents |
+
+All financial analysis is available exclusively through MCP tools below.
+
 ## MCP Tools
 
 ### get_stock_data
