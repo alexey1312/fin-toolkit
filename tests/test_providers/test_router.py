@@ -179,3 +179,81 @@ class TestProviderRouter:
 
         result = await router.get_prices("KCEL", "2024-01-01", "2024-12-31")
         assert result.period == "from_yahoo"
+
+
+class TestDynamicTickers:
+    async def test_router_dynamic_kase_ticker(self) -> None:
+        """Unknown ticker found in KASE dynamic list routes to kase provider."""
+        config = ToolkitConfig(
+            data=DataConfig(primary_provider="yahoo", fallback_providers=[]),
+            markets={"kz": MarketConfig(provider="kase", tickers=[])},
+        )
+        kase = _make_provider("kase")
+        kase.get_prices.return_value = _make_price_data("AIRA", "kase")
+        # Add list_tickers capability
+        kase.list_tickers = AsyncMock(return_value=["KCEL", "AIRA", "HSBK"])
+
+        yahoo = _make_provider("yahoo")
+        router = ProviderRouter(
+            config=config, providers={"kase": kase, "yahoo": yahoo},
+        )
+
+        result = await router.get_prices("AIRA", "2024-01-01", "2024-12-31")
+        assert result.period == "from_kase"
+        kase.get_prices.assert_called_once()
+
+    async def test_router_dynamic_does_not_override_static(self) -> None:
+        """Static market mapping still takes priority over dynamic."""
+        config = ToolkitConfig(
+            data=DataConfig(primary_provider="yahoo", fallback_providers=[]),
+            markets={"kz": MarketConfig(provider="kase", tickers=["KCEL"])},
+        )
+        kase = _make_provider("kase")
+        kase.get_prices.return_value = _make_price_data("KCEL", "kase")
+        kase.list_tickers = AsyncMock(return_value=["KCEL", "AIRA"])
+
+        router = ProviderRouter(
+            config=config, providers={"kase": kase, "yahoo": _make_provider("yahoo")},
+        )
+
+        result = await router.get_prices("KCEL", "2024-01-01", "2024-12-31")
+        assert result.period == "from_kase"
+
+    async def test_router_dynamic_unknown_ticker_falls_to_primary(self) -> None:
+        """Ticker not in any dynamic list falls to primary chain."""
+        config = ToolkitConfig(
+            data=DataConfig(primary_provider="yahoo", fallback_providers=[]),
+            markets={"kz": MarketConfig(provider="kase", tickers=[])},
+        )
+        kase = _make_provider("kase")
+        kase.list_tickers = AsyncMock(return_value=["KCEL"])
+
+        yahoo = _make_provider("yahoo")
+        yahoo.get_prices.return_value = _make_price_data("AAPL", "yahoo")
+
+        router = ProviderRouter(
+            config=config, providers={"kase": kase, "yahoo": yahoo},
+        )
+
+        result = await router.get_prices("AAPL", "2024-01-01", "2024-12-31")
+        assert result.period == "from_yahoo"
+
+    async def test_router_dynamic_caches_tickers(self) -> None:
+        """Dynamic tickers are fetched once and cached."""
+        config = ToolkitConfig(
+            data=DataConfig(primary_provider="yahoo", fallback_providers=[]),
+            markets={"kz": MarketConfig(provider="kase", tickers=[])},
+        )
+        kase = _make_provider("kase")
+        kase.get_prices.return_value = _make_price_data("AIRA", "kase")
+        kase.list_tickers = AsyncMock(return_value=["AIRA"])
+
+        router = ProviderRouter(
+            config=config, providers={"kase": kase, "yahoo": _make_provider("yahoo")},
+        )
+
+        await router.get_prices("AIRA", "2024-01-01", "2024-12-31")
+        await router.get_prices("AIRA", "2024-01-01", "2024-12-31")
+
+        # list_tickers called only once
+        kase.list_tickers.assert_called_once()

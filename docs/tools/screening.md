@@ -13,7 +13,12 @@ filters: {"pe_ratio": "<15", "roe": ">0.10"}  # optional metric filters
 
 Supported filter operators: `<`, `>`, `<=`, `>=`, `=`, `min..max` (range).
 
-Two-stage process: quick valuation scoring → optional consensus on top N.
+Two-stage process:
+
+1. **Quick scoring** — concurrent metric fetch (`asyncio.gather` + `Semaphore(10)`) for all tickers
+2. **Consensus** — concurrent agent analysis for top N candidates
+
+For `market="kase"`, tickers are discovered dynamically (~87 actively traded shares). Progress is reported via MCP notifications during both stages.
 
 ## generate_investment_idea
 

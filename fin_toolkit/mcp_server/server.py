@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 
 from fin_toolkit.agents.registry import AgentRegistry
 from fin_toolkit.analysis.fundamental import FundamentalAnalyzer
@@ -467,7 +467,9 @@ async def _run_single_recommendation(
 
 
 @mcp.tool
-async def run_all_agents(ticker: str, format: str = "toon") -> str:
+async def run_all_agents(
+    ticker: str, format: str = "toon", ctx: Context | None = None,
+) -> str:
     """START HERE: get consensus from 6 AI investment analyst agents.
 
     Runs elvis_marlamov, warren_buffett, ben_graham, charlie_munger,
@@ -479,7 +481,11 @@ async def run_all_agents(ticker: str, format: str = "toon") -> str:
         format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
+        if ctx:
+            await ctx.report_progress(0, 100, f"Running 6 agents for {ticker}...")
         consensus = await _run_consensus(ticker)
+        if ctx:
+            await ctx.report_progress(100, 100, "Done")
         if not consensus.agent_results:
             return _error_response(
                 "All agents failed: "
@@ -496,6 +502,7 @@ async def run_all_agents(ticker: str, format: str = "toon") -> str:
 @mcp.tool
 async def run_recommendation(
     ticker: str, period: str = "1y", format: str = "toon",
+    ctx: Context | None = None,
 ) -> str:
     """Generate a buy/hold recommendation with position sizing for a ticker.
 
@@ -508,8 +515,12 @@ async def run_recommendation(
         format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
+        if ctx:
+            await ctx.report_progress(0, 100, f"Recommendation for {ticker}...")
         start, end = _period_to_dates(period)
         result, _ = await _run_single_recommendation(ticker, start, end)
+        if ctx:
+            await ctx.report_progress(100, 100, "Done")
         return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
         return _error_response(exc)
@@ -521,6 +532,7 @@ async def run_recommendation(
 @mcp.tool
 async def run_portfolio_analysis(
     tickers: list[str], period: str = "1y", format: str = "toon",
+    ctx: Context | None = None,
 ) -> str:
     """Analyze a portfolio of tickers with correlation-adjusted position sizing.
 
@@ -538,9 +550,13 @@ async def run_portfolio_analysis(
         if len(tickers) > 10:
             return _error_response("Portfolio analysis supports at most 10 tickers")
 
+        if ctx:
+            await ctx.report_progress(0, 100, f"Analyzing {len(tickers)} tickers...")
         start, end = _period_to_dates(period)
         tasks = [_run_single_recommendation(t, start, end) for t in tickers]
         results_raw = await asyncio.gather(*tasks, return_exceptions=True)
+        if ctx:
+            await ctx.report_progress(80, 100, "Computing correlations...")
 
         recommendations: dict[str, RecommendationResult] = {}
         prices_map: dict[str, PriceData] = {}
@@ -602,6 +618,7 @@ async def screen_stocks(
     top_n: int = 10,
     filters: dict[str, str] | None = None,
     format: str = "toon",
+    ctx: Context | None = None,
 ) -> str:
     """START HERE: find undervalued stocks in a market or custom list.
 
@@ -632,54 +649,88 @@ async def screen_stocks(
         # Resolve ticker list
         ticker_list = tickers or []
         if not ticker_list and market:
+            if ctx:
+                await ctx.report_progress(0, 100, f"Fetching {market} tickers...")
             ticker_list = await _resolve_market_tickers(market)
         if not ticker_list:
             return _error_response("Provide tickers or market name")
 
         active_filters = filters or {}
+        total = len(ticker_list)
 
-        # Stage 1: quick score + filter
+        # Stage 1: quick score + filter (concurrent fetch)
+        import asyncio
+
         scored: list[tuple[str, float, dict[str, float | None]]] = []
         warnings: list[str] = []
-        for ticker in ticker_list:
-            try:
-                metrics = await _provider_router.get_metrics(ticker)
-                if active_filters and not matches_filters(metrics, active_filters):
-                    continue
-                qs = compute_quick_score(metrics)
-                key_m: dict[str, float | None] = {
-                    "pe_ratio": metrics.pe_ratio,
-                    "pb_ratio": metrics.pb_ratio,
-                    "ev_ebitda": metrics.ev_ebitda,
-                    "dividend_yield": metrics.dividend_yield,
-                    "roe": metrics.roe,
-                }
-                scored.append((ticker, qs, key_m))
-            except Exception as exc:
-                warnings.append(f"{ticker}: {exc}")
+        sem = asyncio.Semaphore(10)
+        scored_count = 0
+
+        async def _score_one(t: str) -> tuple[str, float, dict[str, float | None]] | None:
+            nonlocal scored_count
+            async with sem:
+                try:
+                    metrics = await _provider_router.get_metrics(t)
+                    if active_filters and not matches_filters(metrics, active_filters):
+                        return None
+                    qs = compute_quick_score(metrics)
+                    key_m: dict[str, float | None] = {
+                        "pe_ratio": metrics.pe_ratio,
+                        "pb_ratio": metrics.pb_ratio,
+                        "ev_ebitda": metrics.ev_ebitda,
+                        "dividend_yield": metrics.dividend_yield,
+                        "roe": metrics.roe,
+                    }
+                    return (t, qs, key_m)
+                except Exception as exc:
+                    warnings.append(f"{t}: {exc}")
+                    return None
+                finally:
+                    scored_count += 1
+                    if ctx and scored_count % 10 == 0:
+                        pct = int(10 + 60 * scored_count / total)
+                        await ctx.report_progress(pct, 100, f"Scoring {scored_count}/{total}...")
+
+        if ctx:
+            await ctx.report_progress(10, 100, f"Scoring {total} tickers...")
+        results = await asyncio.gather(*[_score_one(t) for t in ticker_list])
+        for r in results:
+            if r is not None:
+                scored.append(r)
 
         scored.sort(key=lambda x: x[1], reverse=True)
         top = scored[:top_n]
 
-        # Stage 2: consensus for top-N
-        candidates: list[ScreeningCandidate] = []
-        for ticker, qs, key_m in top:
+        # Stage 2: consensus for top-N (concurrent)
+        if ctx:
+            top_tickers = ", ".join(t for t, _, _ in top)
+            await ctx.report_progress(70, 100, f"Consensus for {len(top)}: {top_tickers}")
+
+        async def _consensus_one(
+            t: str, qs: float, key_m: dict[str, float | None],
+        ) -> ScreeningCandidate:
             cs_score: float | None = None
             cs_signal: str | None = None
             try:
-                consensus = await _run_consensus(ticker)
+                consensus = await _run_consensus(t)
                 cs_score = consensus.consensus_score
                 cs_signal = consensus.consensus_signal
             except Exception as exc:
-                warnings.append(f"{ticker} consensus: {exc}")
-
-            candidates.append(ScreeningCandidate(
-                ticker=ticker,
+                warnings.append(f"{t} consensus: {exc}")
+            return ScreeningCandidate(
+                ticker=t,
                 quick_score=qs,
                 consensus_score=cs_score,
                 consensus_signal=cs_signal,
                 key_metrics=key_m,
-            ))
+            )
+
+        candidates = list(await asyncio.gather(
+            *[_consensus_one(t, qs, km) for t, qs, km in top],
+        ))
+
+        if ctx:
+            await ctx.report_progress(100, 100, "Done")
 
         result = ScreeningResult(
             market=market,
@@ -701,6 +752,7 @@ async def generate_investment_idea(
     ticker: str,
     period: str = "2y",
     format: str = "html",
+    ctx: Context | None = None,
 ) -> str:
     """START HERE: full investment report with charts, scenarios, and catalysts.
 
@@ -726,6 +778,8 @@ async def generate_investment_idea(
         start, end = _period_to_dates(period)
 
         # Step 1: parallel data fetch
+        if ctx:
+            await ctx.report_progress(0, 100, f"Fetching data for {ticker}...")
         consensus_task = _run_consensus(ticker)
         financials_task = _provider_router.get_financials(ticker)
         metrics_task = _provider_router.get_metrics(ticker)
@@ -735,6 +789,8 @@ async def generate_investment_idea(
             consensus_task, financials_task, metrics_task, prices_task,
             return_exceptions=True,
         )
+        if ctx:
+            await ctx.report_progress(50, 100, "Building scenarios & report...")
 
         consensus = _unwrap(results[0], "consensus")
         financials = _unwrap(results[1], "financials")
@@ -935,7 +991,10 @@ async def _resolve_market_tickers(market: str) -> list[str]:
         moex = MOEXProvider()
         return await moex.list_tickers()
     if market == "kase":
-        return ["KCEL", "KZTO", "KEGC", "HSBK", "CCBN"]
+        kase_prov = _provider_router._providers.get("kase")  # type: ignore[union-attr]
+        if kase_prov and hasattr(kase_prov, "list_tickers"):
+            return await kase_prov.list_tickers()
+        return []
     return []
 
 
@@ -988,6 +1047,7 @@ async def deep_dive(
     tickers: list[str],
     period: str = "1y",
     format: str = "toon",
+    ctx: Context | None = None,
 ) -> str:
     """START HERE: comprehensive analysis for 1-10 tickers at once.
 
@@ -1008,17 +1068,32 @@ async def deep_dive(
         if len(tickers) > 10:
             return _error_response("Deep dive supports at most 10 tickers")
 
+        if ctx:
+            await ctx.report_progress(
+                0, 100, f"Deep dive: {', '.join(tickers)}",
+            )
+
         start, end = _period_to_dates(period)
         items: dict[str, DeepDiveItem] = {}
         batch_warnings: list[str] = []
 
-        for ticker in tickers:
+        async def _dive_one(ticker: str) -> tuple[str, DeepDiveItem | None, str | None]:
             w: list[str] = []
             try:
                 item = await _deep_dive_single(ticker, start, end, w)
-                items[ticker] = item
+                return (ticker, item, None)
             except Exception as exc:
-                batch_warnings.append(f"{ticker}: {exc}")
+                return (ticker, None, f"{ticker}: {exc}")
+
+        dive_results = await asyncio.gather(*[_dive_one(t) for t in tickers])
+        for ticker, item, err in dive_results:
+            if item is not None:
+                items[ticker] = item
+            if err:
+                batch_warnings.append(err)
+
+        if ctx:
+            await ctx.report_progress(100, 100, "Done")
 
         if not items:
             return _error_response(
@@ -1097,6 +1172,7 @@ async def compare_stocks(
     tickers: list[str],
     metrics: list[str] | None = None,
     format: str = "toon",
+    ctx: Context | None = None,
 ) -> str:
     """Compare 2-10 stocks side by side on key metrics.
 
@@ -1121,11 +1197,16 @@ async def compare_stocks(
 
         from fin_toolkit.analysis.comparison import build_comparison_matrix
 
+        if ctx:
+            await ctx.report_progress(
+                0, 100, f"Comparing {', '.join(tickers)}...",
+            )
+
         start, end = _period_to_dates("1y")
         ticker_data: dict[str, ComparisonInput] = {}
         warnings: list[str] = []
 
-        for ticker in tickers:
+        async def _compare_one(ticker: str) -> ComparisonInput:
             km = None
             risk_r = None
             cons = None
@@ -1142,10 +1223,18 @@ async def compare_stocks(
                 cons = await _run_consensus(ticker)
             except Exception as exc:
                 warnings.append(f"{ticker} consensus: {exc}")
-
-            ticker_data[ticker] = ComparisonInput(
+            return ComparisonInput(
                 ticker=ticker, key_metrics=km, risk=risk_r, consensus=cons,
             )
+
+        compare_results = await asyncio.gather(
+            *[_compare_one(t) for t in tickers],
+        )
+        for ci in compare_results:
+            ticker_data[ci.ticker] = ci
+
+        if ctx:
+            await ctx.report_progress(90, 100, "Building matrix...")
 
         result = build_comparison_matrix(ticker_data, metrics)
         out = result.model_dump()
@@ -1288,6 +1377,7 @@ async def set_alert(
 async def check_watchlist(
     watchlist: str = "default",
     format: str = "toon",
+    ctx: Context | None = None,
 ) -> str:
     """Check a watchlist for triggered alerts.
 
@@ -1306,11 +1396,18 @@ async def check_watchlist(
         from fin_toolkit.analysis.alerts import evaluate_alerts
 
         entries = _watchlist_store.get_watchlist(watchlist)
+        if ctx:
+            await ctx.report_progress(
+                0, 100,
+                f"Checking {len(entries)} tickers in '{watchlist}'...",
+            )
         all_triggered: list[Any] = []
         warnings: list[str] = []
         start, end = _period_to_dates("6m")
 
-        for entry in entries:
+        async def _check_entry(
+            entry: Any,
+        ) -> list[dict[str, Any]]:
             km = None
             risk_r = None
             tech = None
@@ -1325,9 +1422,17 @@ async def check_watchlist(
                     tech = _technical_analyzer.analyze(pd)
             except Exception as exc:
                 warnings.append(f"{entry.ticker} prices: {exc}")
-
             triggered = evaluate_alerts(entry, km, risk_r, tech)
-            all_triggered.extend(t.model_dump() for t in triggered)
+            return [t.model_dump() for t in triggered]
+
+        entry_results = await asyncio.gather(
+            *[_check_entry(e) for e in entries],
+        )
+        for triggered_list in entry_results:
+            all_triggered.extend(triggered_list)
+
+        if ctx:
+            await ctx.report_progress(100, 100, "Done")
 
         result = WatchlistCheckResult(
             watchlist_name=watchlist,

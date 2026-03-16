@@ -10,7 +10,7 @@ fin-toolkit/
     router.py         #   ProviderRouter: market mapping + fallback chain
     search_router.py  #   SearchRouter: fallback chain for search
     yahoo.py          #   Yahoo Finance (free, no API key)
-    kase.py           #   KASE JSON API + Yahoo .ME fallback
+    kase.py           #   KASE JSON API + Yahoo multi-suffix + dynamic tickers
     moex.py           #   MOEX via aiomoex
     smartlab.py       #   SmartLab fundamentals + IFRS (scraper)
     financialdatasets.py  # Financial Datasets REST API
@@ -90,11 +90,14 @@ class AnalysisAgent(Protocol):
 Request → ProviderRouter
            │
            ├── Explicit provider? → use it
-           ├── Market mapping match? → use configured provider
+           ├── Static market mapping? → use configured provider
+           ├── Dynamic tickers? → check providers with list_tickers()
            ├── Primary provider → try first
            └── Fallback chain → iterate until success
                                 └── AllProvidersFailedError
 ```
+
+Dynamic tickers are fetched lazily on first request (e.g., KASE's 87 actively traded shares) and cached. This allows new listings to be discovered automatically without config changes.
 
 Same pattern for `SearchRouter` with the search fallback chain.
 

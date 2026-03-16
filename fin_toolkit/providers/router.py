@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fin_toolkit.config.models import ToolkitConfig
 from fin_toolkit.exceptions import (
     AllProvidersFailedError,
@@ -29,6 +31,23 @@ class ProviderRouter:
     ) -> None:
         self._config = config
         self._providers = providers
+        self._dynamic_tickers: dict[str, set[str]] | None = None
+        self._dynamic_lock = asyncio.Lock()
+
+    async def _ensure_dynamic_tickers(self) -> None:
+        """Lazily populate dynamic ticker sets from providers with list_tickers()."""
+        if self._dynamic_tickers is not None:
+            return
+        async with self._dynamic_lock:
+            if self._dynamic_tickers is not None:
+                return  # another coroutine filled it while we waited
+            result: dict[str, set[str]] = {}
+            for market_cfg in self._config.markets.values():
+                prov = self._providers.get(market_cfg.provider)
+                if prov and hasattr(prov, "list_tickers") and not market_cfg.tickers:
+                    tickers = await prov.list_tickers()
+                    result[market_cfg.provider] = set(tickers)
+            self._dynamic_tickers = result
 
     def _resolve_chain(self, ticker: str, provider: str | None = None) -> list[str]:
         """Build ordered list of provider names to try."""
@@ -37,8 +56,16 @@ class ProviderRouter:
 
         chain: list[str] = []
 
-        # Check market mapping
+        # Check static market mapping
         mapped = self._config.get_ticker_provider(ticker)
+
+        # Check dynamic tickers if no static mapping found
+        if not mapped and self._dynamic_tickers:
+            for prov_name, ticker_set in self._dynamic_tickers.items():
+                if ticker in ticker_set:
+                    mapped = prov_name
+                    break
+
         if mapped and mapped in self._providers:
             chain.append(mapped)
 
@@ -62,6 +89,7 @@ class ProviderRouter:
         provider: str | None = None,
     ) -> PriceData:
         """Get prices, trying providers in resolution order."""
+        await self._ensure_dynamic_tickers()
         chain = self._resolve_chain(ticker, provider)
         errors: dict[str, str] = {}
 
@@ -79,6 +107,7 @@ class ProviderRouter:
         provider: str | None = None,
     ) -> FinancialStatements:
         """Get financials, trying providers in resolution order."""
+        await self._ensure_dynamic_tickers()
         chain = self._resolve_chain(ticker, provider)
         errors: dict[str, str] = {}
 
@@ -96,6 +125,7 @@ class ProviderRouter:
         provider: str | None = None,
     ) -> KeyMetrics:
         """Get metrics, trying providers in resolution order."""
+        await self._ensure_dynamic_tickers()
         chain = self._resolve_chain(ticker, provider)
         errors: dict[str, str] = {}
 

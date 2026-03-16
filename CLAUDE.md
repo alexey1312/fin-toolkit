@@ -66,6 +66,7 @@ New providers/agents implement the protocol; no base class inheritance needed.
 - `init_server()` accepts optional `watchlist_store: WatchlistStore | None` and `portfolio_store: PortfolioStore | None` — `cli.py` creates both and passes them
 
 All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON saves 30-60% tokens on tabular data. Errors always return JSON. Serialization logic in `mcp_server/serialize.py`.
+- Long-running tools use `ctx: Context | None = None` for progress reporting via `ctx.report_progress(current, total, message)`
 - `_error_response(exc)` accepts `FinToolkitError | str` — pass exception objects (not `str(exc)`) for `FinToolkitError` catches to include `hint` in JSON response
 
 ### Analysis agents
@@ -98,6 +99,7 @@ All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `
 
 Priority: env vars → `.env` → `./fin-toolkit.yaml` → `~/.config/fin-toolkit/config.yaml` → defaults.
 Config files are NOT merged — first found wins. API keys in global config are invisible if local config exists.
+- `_setup()` generates config YAML with `markets` section — if user has `markets.kz.tickers` in their config, it overrides `DEFAULT_MARKETS` and blocks dynamic routing
 - `_setup()` writes Pydantic defaults from `ToolkitConfig().model_dump()` — no hardcoded `_DEFAULT_CONFIG`. Excludes `rate_limits`, `markets`, and `database` from generated YAML.
 `_status()` uses `load_config()` + `available_providers()` — do not duplicate availability logic.
 
@@ -203,11 +205,17 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 
 - JSON API (`kase.kz/api/*`), no auth, no API key needed
 - Two-layer design: `_KASEClient` (HTTP client) + `KASEProvider` (protocol adapter)
-- Historical OHLCV: delegated to Yahoo Finance via `{ticker}.ME` suffix (KASE API has no history endpoint)
-- `get_metrics()` maps KASE fields (`capit` → `market_cap`, `pe` → `pe_ratio`, etc.); `get_financials()` returns None (no reporting data)
+- `list_tickers()` — dynamic ticker discovery via `list_securities(sec_type="share")`, cached 24h, filtered by `_LOCAL_SHARE_CATEGORIES` (premium/standard/alternative — excludes KASE Global cross-listings and delisted)
+- `DEFAULT_MARKETS["kz"].tickers` is empty — routing is dynamic via `ProviderRouter._ensure_dynamic_tickers()`
+- `_ensure_dynamic_tickers()` uses `asyncio.Lock` with double-checked locking — required because 6 agents call `get_prices` concurrently via `asyncio.gather`
+- Historical OHLCV: delegated to Yahoo Finance with multi-suffix resolution (`_resolve_yahoo_ticker`)
+- `_YAHOO_SUFFIXES = (".ME", ".IL", "")` — tries each until success, caches working suffix per ticker
+- `get_financials()` delegates to Yahoo via resolved suffix; returns None fields if Yahoo unavailable
+- `get_metrics()` merges KASE primary (5 fields: pe, pb, div_yield, market_cap, price) with Yahoo enrichment (roe, roa, d/e, ev, ev_ebitda, fcf_yield, shares)
 - `KASEProvider(yahoo=providers.get("yahoo"))` — Yahoo instance passed from `cli.py`
-- Yahoo `.ME` fallback works only for dual-listed KASE+MOEX tickers (KCEL, HSBK); tickers like KZAP (LSE only as KAP.IL) have no MOEX listing — `get_prices` will fail for them
-- `DEFAULT_MARKETS["kz"].tickers` in `config/models.py` controls which tickers route to KASE provider — keep this list updated
+- `_resolve_market_tickers("kase")` in server.py calls `list_tickers()` dynamically
+- `screen_stocks` Stage 1 uses `asyncio.gather` + `Semaphore(10)` for concurrent metric fetch; Stage 2 runs consensus for top-N concurrently
+- `deep_dive`, `compare_stocks`, `check_watchlist` use `asyncio.gather` for concurrent per-ticker processing (not sequential loops)
 
 ## Testing
 

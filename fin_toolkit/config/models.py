@@ -76,7 +76,7 @@ DEFAULT_RATE_LIMITS: dict[str, RateLimitConfig] = {
 DEFAULT_MARKETS: dict[str, MarketConfig] = {
     "kz": MarketConfig(
         provider="kase",
-        tickers=["KCEL", "KZTO", "KEGC", "HSBK", "CCBN", "KZAP"],
+        tickers=[],  # Dynamic: resolved via KASEProvider.list_tickers()
     ),
 }
 

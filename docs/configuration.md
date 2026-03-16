@@ -60,9 +60,10 @@ markets:
   ru:
     provider: moex
     tickers: [SBER, GAZP, LKOH, ROSN, GMKN]
-  kz:
-    provider: kase
-    tickers: [KCEL, KZTO, KEGC, HSBK, CCBN, KZAP]
+  # kz market uses dynamic ticker discovery — no need to list tickers
+  # kz:
+  #   provider: kase
+  #   tickers: []  # auto-fetched via KASE API
 
 # Override default rate limits per provider (optional)
 rate_limits:

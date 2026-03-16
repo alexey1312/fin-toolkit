@@ -31,7 +31,7 @@ class TestToolkitConfig:
     def test_market_mapping(self) -> None:
         config = ToolkitConfig()
         assert "kz" in config.markets
-        assert "KCEL" in config.markets["kz"].tickers
+        assert config.markets["kz"].tickers == []  # Dynamic via list_tickers()
         assert config.markets["kz"].provider == "kase"
 
 

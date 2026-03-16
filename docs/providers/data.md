@@ -8,7 +8,7 @@ fin-toolkit uses a **routing layer** to resolve data sources automatically. The 
 |----------|---------|---------|--------|------------|---------|
 | Yahoo Finance | Global | No | Yes | Yes | Yes |
 | MOEX | Russia | No | Yes | No | Partial |
-| KASE | Kazakhstan | No | Via Yahoo `.ME` | No | Yes |
+| KASE | Kazakhstan | No | Via Yahoo (multi-suffix) | Via Yahoo | Yes (enriched) |
 | SmartLab | Russia | No | No | Yes | Yes |
 | Financial Datasets | US | Yes | Yes | Yes | Yes |
 | SEC EDGAR | US | No | No | Yes | Yes |
@@ -35,10 +35,11 @@ Open REST API via `aiomoex` + `aiohttp`. No auth required.
 
 JSON API (`kase.kz/api/*`), no auth.
 
-- **Metrics**: market cap, P/E, dividend yield from KASE API
-- **Prices**: delegated to Yahoo Finance via `{ticker}.ME` suffix
-- **Financials**: not available
-- Works for dual-listed KASE+MOEX tickers (KCEL, HSBK); tickers like KZAP (LSE only) will fail for prices
+- **Tickers**: dynamic discovery via `list_tickers()` — fetches all actively traded shares (premium/standard/alternative categories), cached 24h. ~87 tickers, excludes KASE Global cross-listings (AAPL_KZ, TSLA_KZ, etc.)
+- **Metrics**: 5 fields from KASE (market cap, P/E, P/B, dividend yield, price) + Yahoo enrichment (ROE, ROA, D/E, EV, EV/EBITDA, FCF yield, shares outstanding)
+- **Prices**: delegated to Yahoo Finance with multi-suffix resolution (`.ME` → `.IL` → bare ticker). Suffix is cached per ticker after first successful probe
+- **Financials**: delegated to Yahoo Finance via resolved suffix; returns None fields if Yahoo unavailable
+- Dynamic routing: `ProviderRouter` discovers KASE tickers at runtime — no hardcoded ticker lists needed
 
 ## SmartLab
 
@@ -79,3 +80,14 @@ Parse financial report PDFs via `pdfplumber`.
 | Fundamentals (P/E, ROE) | SmartLab | Scrapes comprehensive data |
 | Financial statements | SmartLab | IFRS/MSFO from smart-lab.ru |
 | Screening | MOEX + SmartLab | Tickers from MOEX, metrics from SmartLab |
+
+## Kazakhstan Market Strategy
+
+| Need | Provider | Why |
+|------|----------|-----|
+| Ticker discovery | KASE | Dynamic `list_tickers()`, cached 24h |
+| Prices (AIRA, KCEL, etc.) | KASE → Yahoo | Multi-suffix resolution (.ME/.IL/bare) |
+| Fundamentals (P/E, P/B) | KASE | Realtime from KASE API |
+| Enriched metrics (ROE, EV) | KASE + Yahoo | KASE primary + Yahoo enrichment |
+| Financial statements | KASE → Yahoo | Delegated to Yahoo via resolved suffix |
+| Screening | `screen_stocks(market="kase")` | Dynamic tickers, concurrent scoring |
