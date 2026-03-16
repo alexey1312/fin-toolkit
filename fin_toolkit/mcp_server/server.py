@@ -68,9 +68,14 @@ mcp = FastMCP("fin-toolkit")
 # ---------------------------------------------------------------------------
 
 
-def _error_response(message: str) -> str:
-    """Return a structured JSON error string."""
-    return json.dumps({"error": message, "is_error": True})
+def _error_response(exc: FinToolkitError | str) -> str:
+    """Return a structured JSON error string, with hint if available."""
+    if isinstance(exc, str):
+        return json.dumps({"error": exc, "is_error": True})
+    payload: dict[str, object] = {"error": str(exc), "is_error": True}
+    if exc.hint:
+        payload["hint"] = exc.hint
+    return json.dumps(payload)
 
 
 def _period_to_dates(period: str) -> tuple[str, str]:
@@ -136,10 +141,11 @@ async def get_stock_data(
     provider: str | None = None,
     format: str = "toon",
 ) -> str:
-    """Get historical stock price data for a ticker.
+    """START HERE: fetch price data for any stock, ETF, or crypto ticker.
 
+    Supports US, European, Asian, Russian (MOEX), and Kazakh (KASE) markets.
     For Russian tickers (SBER, GAZP, LKOH), use provider="moex".
-    Yahoo Finance requires ".ME" suffix for Moscow Exchange tickers.
+    See also: deep_dive for batch analysis, run_technical_analysis for indicators.
 
     Args:
         ticker: Stock ticker symbol (e.g. AAPL, MSFT, SBER).
@@ -153,7 +159,7 @@ async def get_stock_data(
         price_data = await _provider_router.get_prices(ticker, start, end, provider)
         return serialize(price_data.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in get_stock_data")
         return _error_response(f"Internal error: {exc}")
@@ -161,9 +167,10 @@ async def get_stock_data(
 
 @mcp.tool
 async def run_technical_analysis(ticker: str, format: str = "toon") -> str:
-    """Run technical analysis on a stock ticker.
+    """Compute technical indicators and trading signals for a ticker.
 
-    Computes RSI, EMA, Bollinger Bands, MACD, and derives trading signals.
+    Returns RSI, EMA (20/50/200), Bollinger Bands, MACD, signals, overall bias.
+    See also: get_stock_data for raw prices, run_fundamental_analysis for ratios.
 
     Args:
         ticker: Stock ticker symbol.
@@ -177,7 +184,7 @@ async def run_technical_analysis(ticker: str, format: str = "toon") -> str:
         result = _technical_analyzer.analyze(price_data)
         return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in run_technical_analysis")
         return _error_response(f"Internal error: {exc}")
@@ -189,10 +196,10 @@ async def run_fundamental_analysis(
     sector: str | None = None,
     format: str = "toon",
 ) -> str:
-    """Run fundamental analysis on a stock ticker.
+    """Compute profitability, valuation, and stability ratios for a ticker.
 
-    Computes profitability, valuation, and stability ratios with optional
-    sector comparison.
+    Returns ROE, ROA, ROIC, margins, P/E, P/B, EV/EBITDA, FCF yield, D/E, etc.
+    See also: run_all_agents for AI-driven analysis, deep_dive for batch.
 
     Args:
         ticker: Stock ticker symbol.
@@ -211,7 +218,7 @@ async def run_fundamental_analysis(
         result = _fundamental_analyzer.analyze(financials, metrics, sector=sector)
         return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in run_fundamental_analysis")
         return _error_response(f"Internal error: {exc}")
@@ -223,9 +230,10 @@ async def run_risk_analysis(
     period: str = "1y",
     format: str = "toon",
 ) -> str:
-    """Run risk analysis on one or more tickers.
+    """Compute volatility, Value at Risk, and correlation for one or more tickers.
 
-    Computes volatility, Value at Risk, and correlation matrix.
+    Returns per-ticker volatility (30d/90d/252d), VaR (95%/99%), pairwise correlations.
+    See also: run_portfolio_analysis for position sizing, deep_dive for full analysis.
 
     Args:
         tickers: List of stock ticker symbols.
@@ -267,7 +275,7 @@ async def run_risk_analysis(
         combined: dict[str, Any] = {"risk": risk, "correlation": corr.model_dump()}
         return serialize(combined, format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in run_risk_analysis")
         return _error_response(f"Internal error: {exc}")
@@ -306,7 +314,9 @@ async def search_news(
     max_results: int = 10,
     format: str = "toon",
 ) -> str:
-    """Search for financial news and articles.
+    """Search financial news and articles via DuckDuckGo or configured providers.
+
+    Works out of the box (no API key). See also: deep_dive (includes news per ticker).
 
     Args:
         query: Search query (e.g. "AAPL earnings Q4 2024").
@@ -332,7 +342,7 @@ async def search_news(
             )
         return serialize(data, format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in search_news")
         return _error_response(f"Internal error: {exc}")
@@ -344,10 +354,11 @@ async def run_agent(
     agent: str = "elvis_marlamov",
     format: str = "toon",
 ) -> str:
-    """Run an AI analysis agent on a stock ticker.
+    """Run a single AI analysis agent on a ticker.
 
     Available agents: elvis_marlamov, warren_buffett, ben_graham,
     charlie_munger, cathie_wood, peter_lynch.
+    See also: run_all_agents for consensus from all agents at once.
 
     Args:
         ticker: Stock ticker symbol.
@@ -360,7 +371,7 @@ async def run_agent(
         result = await agent_instance.analyze(ticker)
         return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in run_agent")
         return _error_response(f"Internal error: {exc}")
@@ -453,9 +464,11 @@ async def _run_single_recommendation(
 
 @mcp.tool
 async def run_all_agents(ticker: str, format: str = "toon") -> str:
-    """Run all active analysis agents on a ticker and compute consensus.
+    """START HERE: get consensus from 6 AI investment analyst agents.
 
-    Returns aggregated consensus score, signal, confidence, and per-agent results.
+    Runs elvis_marlamov, warren_buffett, ben_graham, charlie_munger,
+    cathie_wood, peter_lynch concurrently and computes consensus score/signal.
+    See also: run_agent for a single agent, run_recommendation for sizing.
 
     Args:
         ticker: Stock ticker symbol.
@@ -470,7 +483,7 @@ async def run_all_agents(ticker: str, format: str = "toon") -> str:
             )
         return serialize(consensus.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in run_all_agents")
         return _error_response(f"Internal error: {exc}")
@@ -495,7 +508,7 @@ async def run_recommendation(
         result, _ = await _run_single_recommendation(ticker, start, end)
         return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in run_recommendation")
         return _error_response(f"Internal error: {exc}")
@@ -567,7 +580,7 @@ async def run_portfolio_analysis(
         )
         return serialize(portfolio.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in run_portfolio_analysis")
         return _error_response(f"Internal error: {exc}")
@@ -586,7 +599,7 @@ async def screen_stocks(
     filters: dict[str, str] | None = None,
     format: str = "toon",
 ) -> str:
-    """Screen stocks by quick valuation score and optionally run consensus on top candidates.
+    """START HERE: find undervalued stocks in a market or custom list.
 
     Provide either an explicit list of tickers or a market name to auto-fetch.
     Scoring uses P/E, P/B, EV/EBITDA, FCF yield, D/E, dividend yield, ROE.
@@ -673,7 +686,7 @@ async def screen_stocks(
         )
         return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in screen_stocks")
         return _error_response(f"Internal error: {exc}")
@@ -685,11 +698,12 @@ async def generate_investment_idea(
     period: str = "2y",
     format: str = "html",
 ) -> str:
-    """Generate a comprehensive investment idea with analysis, scenarios, and charts.
+    """START HERE: full investment report with charts, scenarios, and catalysts.
 
     Combines consensus from all agents, fundamental/technical/risk analysis,
     FCF waterfall, scenario valuations, catalysts, and risks into a single report.
     Default output is an interactive HTML file with Plotly charts.
+    See also: deep_dive for quick multi-ticker analysis, compare_stocks for side-by-side.
 
     Best results for US tickers (full fundamentals via Yahoo/EDGAR).
     For Russian tickers: use parse_report first to load IFRS data, then
@@ -864,7 +878,7 @@ async def generate_investment_idea(
             return _render_html_idea(idea)
         return serialize(idea.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in generate_investment_idea")
         return _error_response(f"Internal error: {exc}")
@@ -892,7 +906,7 @@ async def parse_report(
         result = await parse_financial_report(source, ticker)
         return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in parse_report")
         return _error_response(f"Internal error: {exc}")
@@ -971,10 +985,11 @@ async def deep_dive(
     period: str = "1y",
     format: str = "toon",
 ) -> str:
-    """Run a batch deep dive on multiple tickers (max 10).
+    """START HERE: comprehensive analysis for 1-10 tickers at once.
 
     For each ticker: fetches prices, financials, metrics, runs consensus and
     news search concurrently. Partial failures produce warnings, never kill batch.
+    See also: compare_stocks for side-by-side metrics, run_portfolio_analysis for sizing.
 
     Args:
         tickers: List of 1-10 stock ticker symbols.
@@ -1009,7 +1024,7 @@ async def deep_dive(
         result = DeepDiveResult(items=items, warnings=batch_warnings)
         return serialize(result.model_dump(), format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in deep_dive")
         return _error_response(f"Internal error: {exc}")
@@ -1081,8 +1096,8 @@ async def compare_stocks(
 ) -> str:
     """Compare 2-10 stocks side by side on key metrics.
 
-    Fetches metrics, risk, and consensus for each ticker concurrently,
-    then builds a comparison matrix oriented as {metric: {ticker: value}}.
+    Builds a comparison matrix {metric: {ticker: value}} with metrics, risk, consensus.
+    See also: deep_dive for full per-ticker analysis, run_portfolio_analysis for sizing.
 
     Args:
         tickers: List of 2-10 stock ticker symbols.
@@ -1133,7 +1148,7 @@ async def compare_stocks(
         out["warnings"] = result.warnings + warnings
         return serialize(out, format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in compare_stocks")
         return _error_response(f"Internal error: {exc}")
@@ -1214,7 +1229,7 @@ async def manage_watchlist(
 
         return _error_response(f"Unknown action: {action}")
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in manage_watchlist")
         return _error_response(f"Internal error: {exc}")
@@ -1259,7 +1274,7 @@ async def set_alert(
              "operator": operator, "threshold": threshold}, format,
         )
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in set_alert")
         return _error_response(f"Internal error: {exc}")
@@ -1321,7 +1336,7 @@ async def check_watchlist(
         out["alerts_triggered"] = all_triggered
         return serialize(out, format)
     except FinToolkitError as exc:
-        return _error_response(str(exc))
+        return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in check_watchlist")
         return _error_response(f"Internal error: {exc}")

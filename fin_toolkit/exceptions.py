@@ -1,8 +1,14 @@
 """Custom exceptions for fin-toolkit."""
 
+from __future__ import annotations
+
 
 class FinToolkitError(Exception):
     """Base exception for fin-toolkit."""
+
+    @property
+    def hint(self) -> str:
+        return ""
 
 
 class TickerNotFoundError(FinToolkitError):
@@ -16,6 +22,18 @@ class TickerNotFoundError(FinToolkitError):
             msg += f" in {provider}"
         super().__init__(msg)
 
+    @property
+    def hint(self) -> str:
+        if self.provider:
+            return (
+                f"Ticker may not be listed on {self.provider}. "
+                "Try without specifying provider."
+            )
+        return (
+            "Check ticker symbol. "
+            "Moscow Exchange uses MOEX codes (SBER, not SBER.ME)."
+        )
+
 
 class ProviderUnavailableError(FinToolkitError):
     """Raised when a provider is temporarily unavailable."""
@@ -28,6 +46,13 @@ class ProviderUnavailableError(FinToolkitError):
             msg += f": {reason}"
         super().__init__(msg)
 
+    @property
+    def hint(self) -> str:
+        return (
+            f"Provider '{self.provider}' may be down or misconfigured. "
+            "Run 'fin-toolkit status' to check."
+        )
+
 
 class AllProvidersFailedError(FinToolkitError):
     """Raised when all providers in the fallback chain fail."""
@@ -37,12 +62,23 @@ class AllProvidersFailedError(FinToolkitError):
         details = ", ".join(f"{p}: {e}" for p, e in errors.items())
         super().__init__(f"All providers failed: {details}")
 
+    @property
+    def hint(self) -> str:
+        return (
+            "Run 'fin-toolkit status' to check providers. "
+            "For Russian tickers try provider='moex'."
+        )
+
 
 class ProviderConfigError(FinToolkitError):
     """Raised when provider configuration is invalid or missing."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+    @property
+    def hint(self) -> str:
+        return "Check fin-toolkit.yaml or environment variables."
 
 
 class InsufficientDataError(FinToolkitError):
@@ -56,6 +92,10 @@ class InsufficientDataError(FinToolkitError):
             msg += f" ({context})"
         super().__init__(msg)
 
+    @property
+    def hint(self) -> str:
+        return "Try a shorter period or a different provider with more history."
+
 
 class AgentNotFoundError(FinToolkitError):
     """Raised when a requested agent is not found in the registry."""
@@ -63,6 +103,13 @@ class AgentNotFoundError(FinToolkitError):
     def __init__(self, agent_name: str) -> None:
         self.agent_name = agent_name
         super().__init__(f"Agent '{agent_name}' not found in registry")
+
+    @property
+    def hint(self) -> str:
+        return (
+            "Available agents: elvis_marlamov, warren_buffett, "
+            "ben_graham, charlie_munger, cathie_wood, peter_lynch."
+        )
 
 
 class ConfigError(FinToolkitError):
@@ -81,6 +128,13 @@ class InvalidFilterError(FinToolkitError):
         if reason:
             msg += f" ({reason})"
         super().__init__(msg)
+
+    @property
+    def hint(self) -> str:
+        return (
+            "Supported operators: <, >, <=, >=, =, min..max. "
+            'Example: {"pe_ratio": "<15", "roe": ">0.10"}.'
+        )
 
 
 class WatchlistError(FinToolkitError):

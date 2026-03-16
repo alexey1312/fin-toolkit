@@ -4,19 +4,24 @@ Protocol-first financial analysis toolkit with MCP server for Claude Code.
 
 ## Quick Start
 
+### Users (2 commands)
+
 ```bash
-# Install
-mise install && uv sync
-
-# Register MCP server for Claude Code
-fin-toolkit setup            # local (.mcp.json)
-fin-toolkit setup --global   # global (~/.claude.json)
-
-# Check status
-fin-toolkit status
+uv tool install "fin-toolkit @ git+https://github.com/alexey1312/axel.git"
+fin-toolkit quickstart
 ```
 
-All MCP tools work out of the box — no API keys required (Yahoo Finance + DuckDuckGo).
+### Developers
+
+```bash
+git clone https://github.com/alexey1312/axel.git && cd axel
+uv sync
+fin-toolkit setup            # local (.mcp.json)
+# or: fin-toolkit setup --global   # global (~/.claude.json)
+```
+
+No API keys required — Yahoo Finance + DuckDuckGo work out of the box.
+Run `fin-toolkit status` to see what's available.
 
 ## How It Works
 
@@ -77,6 +82,7 @@ CLI is infrastructure-only — it manages the server lifecycle, not analysis:
 
 | Command | Description |
 |---------|-------------|
+| `fin-toolkit quickstart` | Setup + status in one step (registers globally) |
 | `fin-toolkit serve` | Start the MCP server |
 | `fin-toolkit setup` | Register in `.mcp.json` (or `--global` for `~/.claude.json`) |
 | `fin-toolkit status` | Show available providers, search engines, and agents |

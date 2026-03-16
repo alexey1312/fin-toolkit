@@ -10,24 +10,10 @@ from typing import Any
 import yaml
 
 # Default MCP server entry
+_PROJECT_DIR = str(Path(__file__).resolve().parent.parent)
 _MCP_SERVER_ENTRY: dict[str, Any] = {
     "command": "uv",
-    "args": ["run", "--project", str(Path(__file__).resolve().parent.parent), "fin-toolkit", "serve"],
-}
-
-# Default config content
-_DEFAULT_CONFIG: dict[str, Any] = {
-    "data": {
-        "primary_provider": "yahoo",
-        "fallback_providers": ["fmp"],
-    },
-    "search": {
-        "providers": ["brave", "searxng"],
-        "searxng_url": "http://localhost:8888",
-    },
-    "agents": {
-        "active": ["elvis_marlamov", "warren_buffett"],
-    },
+    "args": ["run", "--project", _PROJECT_DIR, "fin-toolkit", "serve"],
 }
 
 
@@ -40,7 +26,7 @@ def main() -> None:
     """Main CLI entry point."""
     if len(sys.argv) < 2:
         print("Usage: fin-toolkit <command>")
-        print("Commands: setup, serve, status")
+        print("Commands: setup, serve, status, quickstart")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -50,6 +36,8 @@ def main() -> None:
         _setup()
     elif command == "status":
         _status()
+    elif command == "quickstart":
+        _quickstart()
     else:
         print(f"Unknown command: {command}")
         sys.exit(1)
@@ -199,11 +187,18 @@ def _setup() -> None:
 
     _write_mcp_entry(target)
 
-    # 2. Write default config if not exists
+    # 2. Write default config if not exists (use Pydantic defaults)
     config_file = Path.home() / ".config" / "fin-toolkit" / "config.yaml"
     if not config_file.exists():
+        from fin_toolkit.config.models import ToolkitConfig
+
         config_file.parent.mkdir(parents=True, exist_ok=True)
-        content = yaml.dump(_DEFAULT_CONFIG, default_flow_style=False, sort_keys=False)
+        defaults = ToolkitConfig()
+        content = yaml.dump(
+            defaults.model_dump(exclude_defaults=False, exclude={"rate_limits", "markets"}),
+            default_flow_style=False,
+            sort_keys=False,
+        )
         config_file.write_text(content)
 
     if use_global:
@@ -230,8 +225,30 @@ def _write_mcp_entry(target: Path) -> None:
         target.write_text(json.dumps(existing, indent=2) + "\n")
 
 
+_DATA_PROVIDER_DESCRIPTIONS: dict[str, str] = {
+    "yahoo": "US/EU/Asia stocks, ETFs, crypto (free)",
+    "kase": "Kazakhstan equities via kase.kz (free)",
+    "moex": "Russian equities — prices (free)",
+    "smartlab": "Russian fundamentals — P/E, ROE, IFRS (free)",
+    "edgar": "US SEC filings (free)",
+    "fmp": "Financial Modeling Prep (needs FMP_API_KEY)",
+    "financialdatasets": "US SEC data, 17k+ tickers (needs FINANCIAL_DATASETS_API_KEY)",
+}
+
+_SEARCH_PROVIDER_DESCRIPTIONS: dict[str, str] = {
+    "duckduckgo": "news & articles (free)",
+    "searxng": "self-hosted search (free)",
+    "google": "Gemini + Search Grounding (needs GEMINI_API_KEY)",
+    "perplexity": "AI-powered search (needs PERPLEXITY_API_KEY)",
+    "tavily": "AI agent search (needs TAVILY_API_KEY)",
+    "brave": "web search (needs BRAVE_API_KEY)",
+    "serper": "Google Search wrapper (needs SERPER_API_KEY)",
+    "exa": "semantic search (needs EXA_API_KEY)",
+}
+
+
 def _status() -> None:
-    """Show toolkit status."""
+    """Show toolkit status with descriptions and usage examples."""
     from fin_toolkit.config.loader import load_config
 
     config = load_config()
@@ -240,7 +257,7 @@ def _status() -> None:
     print("fin-toolkit status")
     print("=" * 40)
 
-    # Config path (replicate loader logic for display only)
+    # Config path
     local_config = cwd / "fin-toolkit.yaml"
     global_config = Path.home() / ".config" / "fin-toolkit" / "config.yaml"
     config_path = local_config if local_config.exists() else (
@@ -254,24 +271,58 @@ def _status() -> None:
 
     # Data providers
     available_data = set(config.available_providers())
-    all_data = ["yahoo", "kase", "moex", "smartlab", "fmp", "financialdatasets"]
+    all_data = ["yahoo", "kase", "moex", "smartlab", "edgar", "fmp", "financialdatasets"]
+    data_count = 0
     print("\nData providers:")
     for p in all_data:
-        mark = "✓" if p in available_data else "✗"
-        print(f"  {mark} {p}")
+        is_available = p in available_data
+        mark = "✓" if is_available else "✗"
+        desc = _DATA_PROVIDER_DESCRIPTIONS.get(p, "")
+        print(f"  {mark} {p:<20s} {desc}")
+        if is_available:
+            data_count += 1
 
     # Search providers
     available_search = set(config.available_search_providers())
-    all_search = ["duckduckgo", "searxng", "google", "perplexity", "tavily", "brave", "serper", "exa"]
+    all_search = [
+        "duckduckgo", "searxng", "google", "perplexity",
+        "tavily", "brave", "serper", "exa",
+    ]
+    search_count = 0
     print("\nSearch providers:")
     for p in all_search:
-        mark = "✓" if p in available_search else "✗"
-        print(f"  {mark} {p}")
+        is_available = p in available_search
+        mark = "✓" if is_available else "✗"
+        desc = _SEARCH_PROVIDER_DESCRIPTIONS.get(p, "")
+        print(f"  {mark} {p:<20s} {desc}")
+        if is_available:
+            search_count += 1
 
     # Agents
-    print("\nActive agents:")
-    if config.agents.active:
-        for a in config.agents.active:
-            print(f"  - {a}")
+    agent_count = len(config.agents.active)
+    agent_names = ", ".join(config.agents.active) if config.agents.active else "(none)"
+    print(f"\nActive agents: {agent_count} ({agent_names})")
+
+    # Summary
+    print(f"\n── Ready {'─' * 31}")
+    print(f"{data_count} data + {search_count} search providers active.")
+    print("All 18 tools available.")
+
+    # Examples based on available providers
+    print("\nTry asking Claude:")
+    print('  "Analyze AAPL"')
+    if "moex" in available_data or "smartlab" in available_data:
+        print('  "Compare SBER vs GAZP"')
+        print('  "Screen moex market for value stocks"')
     else:
-        print("  (none)")
+        print('  "Compare AAPL vs MSFT"')
+        print('  "Screen stocks AAPL, MSFT, GOOGL, AMZN, META"')
+
+
+def _quickstart() -> None:
+    """One command to set up and show status."""
+    # Force --global for quickstart
+    sys.argv.append("--global")
+    _setup()
+    print()
+    _status()
