@@ -381,7 +381,7 @@ All exceptions inherit from `FinToolkitError`. Key subtypes: `TickerNotFoundErro
 
 fin-toolkit loads configuration from (in priority order):
 
-1. Environment variables (`GEMINI_API_KEY`, `BRAVE_API_KEY`, `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, etc.)
+1. Environment variables (`GEMINI_API_KEY`, `BRAVE_API_KEY`, `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, `SERPER_API_KEY`, `EXA_API_KEY`, `FMP_API_KEY`, `FINANCIAL_DATASETS_API_KEY`)
 2. `.env` file in the project root
 3. `./fin-toolkit.yaml` (local config)
 4. `~/.config/fin-toolkit/config.yaml` (global config)
@@ -390,23 +390,63 @@ fin-toolkit loads configuration from (in priority order):
 ### Example `fin-toolkit.yaml`
 
 ```yaml
+# API keys (alternative to env vars — see "Search Providers" table for env var names)
+api_keys:
+  google: "your-gemini-api-key"
+  brave: "your-brave-api-key"
+  perplexity: "your-perplexity-api-key"
+  tavily: "your-tavily-api-key"
+  serper: "your-serper-api-key"
+  exa: "your-exa-api-key"
+  fmp: "your-fmp-api-key"
+  financialdatasets: "your-financial-datasets-api-key"
+
 data:
-  primary_provider: yahoo
-  fallback_providers: [fmp]
+  primary_provider: yahoo                                  # default
+  fallback_providers: [smartlab, moex, financialdatasets, edgar]  # default chain
 
 search:
   providers: [duckduckgo, searxng, google, perplexity, tavily, brave, serper, exa]
-  searxng_url: http://localhost:8888
-  gemini_model: gemini-3.1-flash-lite  # configurable Gemini model for Google search
+  searxng_url: http://localhost:8888                       # SearXNG instance URL
+  gemini_model: gemini-3.1-flash-lite                      # Gemini model for Google search
 
 agents:
   active: [elvis_marlamov, warren_buffett, ben_graham, charlie_munger, cathie_wood, peter_lynch]
 
 markets:
+  ru:
+    provider: moex
+    tickers: [SBER, GAZP, LKOH, ROSN, GMKN]
   kz:
     provider: kase
     tickers: [KCEL, KZTO, KEGC, HSBK, CCBN, KZAP]
+
+# Override default rate limits per provider (optional)
+rate_limits:
+  yahoo:
+    requests_per_minute: 5
+    max_concurrent: 2
+  smartlab:
+    requests_per_minute: 5
+    max_concurrent: 2
+  moex:
+    requests_per_minute: 10
+    max_concurrent: 3
+  kase:
+    requests_per_minute: 2
+    max_concurrent: 1
+  fmp:
+    requests_per_minute: 30
+    max_concurrent: 5
+  financialdatasets:
+    requests_per_minute: 30
+    max_concurrent: 5
+  brave:
+    requests_per_minute: 10
+    max_concurrent: 3
 ```
+
+> **Note:** Config files are NOT merged — first found wins. If `./fin-toolkit.yaml` exists, `~/.config/fin-toolkit/config.yaml` is ignored (including its API keys).
 
 ## Testing
 
