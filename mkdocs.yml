@@ -1,0 +1,71 @@
+site_name: fin-toolkit
+site_url: https://alexey1312.github.io/fin-toolkit/
+site_description: Protocol-first financial analysis toolkit with MCP server for Claude Code
+repo_url: https://github.com/alexey1312/fin-toolkit
+repo_name: alexey1312/fin-toolkit
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.tabs.link
+    - search.suggest
+    - search.highlight
+  icon:
+    repo: fontawesome/brands/github
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+extra_css:
+  - stylesheets/dashboard.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - MCP Tools:
+      - Overview: tools/index.md
+      - Market Data: tools/market-data.md
+      - Analysis: tools/analysis.md
+      - Agents: tools/agents.md
+      - Screening & Ideas: tools/screening.md
+      - Watchlist & Alerts: tools/watchlist.md
+      - Portfolio: tools/portfolio.md
+  - Providers:
+      - Data Providers: providers/data.md
+      - Search Providers: providers/search.md
+  - Configuration: configuration.md
+  - Architecture: architecture.md

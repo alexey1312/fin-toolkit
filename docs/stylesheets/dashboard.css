@@ -1,0 +1,316 @@
+/* ── fin-toolkit dashboard theme ── */
+
+:root {
+  --ft-green: #00c853;
+  --ft-red: #ff1744;
+  --ft-blue: #2979ff;
+  --ft-amber: #ffc400;
+  --ft-surface: #1a1a2e;
+  --ft-card: #16213e;
+  --ft-border: #0f3460;
+  --ft-muted: #8892b0;
+}
+
+/* ── Primary / accent color overrides ── */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0f3460;
+  --md-primary-bg-color: #e2e8f0;
+  --md-accent-fg-color: #2979ff;
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #1a1a2e;
+  --md-primary-bg-color: #ffffff;
+  --md-accent-fg-color: #2979ff;
+}
+
+/* ── Hero section ── */
+.ft-hero {
+  padding: 3rem 1rem;
+  text-align: center;
+  border-bottom: 1px solid var(--ft-border);
+  margin-bottom: 2rem;
+}
+
+.ft-hero h1 {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.ft-hero .ft-ticker {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ft-green);
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.ft-hero .ft-tagline {
+  color: var(--ft-muted);
+  font-size: 1.15rem;
+  max-width: 600px;
+  margin: 0 auto 2rem;
+}
+
+.ft-hero-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.ft-hero-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 1.6rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.ft-hero-actions a:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.ft-btn-primary {
+  background: var(--ft-blue);
+  color: #fff !important;
+}
+
+.ft-btn-secondary {
+  border: 1px solid var(--ft-border);
+  color: var(--ft-muted) !important;
+}
+
+[data-md-color-scheme="default"] .ft-btn-secondary {
+  border-color: #d0d7de;
+  color: #57606a !important;
+}
+
+/* ── Dashboard grid ── */
+.ft-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.2rem;
+  margin: 2rem 0;
+}
+
+/* ── Metric card (like a trading terminal widget) ── */
+.ft-card {
+  border: 1px solid var(--ft-border);
+  border-radius: 8px;
+  padding: 1.4rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.ft-card:hover {
+  border-color: var(--ft-blue);
+  box-shadow: 0 0 0 1px var(--ft-blue);
+}
+
+[data-md-color-scheme="default"] .ft-card {
+  border-color: #d0d7de;
+  background: #f6f8fa;
+}
+
+[data-md-color-scheme="default"] .ft-card:hover {
+  border-color: var(--ft-blue);
+}
+
+.ft-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.ft-card-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ft-muted);
+}
+
+.ft-card-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.ft-badge-green {
+  background: rgba(0, 200, 83, 0.15);
+  color: var(--ft-green);
+}
+
+.ft-badge-blue {
+  background: rgba(41, 121, 255, 0.15);
+  color: var(--ft-blue);
+}
+
+.ft-badge-amber {
+  background: rgba(255, 196, 0, 0.15);
+  color: var(--ft-amber);
+}
+
+.ft-card-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+
+.ft-card-desc {
+  color: var(--ft-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* ── Ticker tape / feature strip ── */
+.ft-tape {
+  display: flex;
+  gap: 2rem;
+  padding: 0.8rem 0;
+  margin: 1rem 0 2rem;
+  border-top: 1px solid var(--ft-border);
+  border-bottom: 1px solid var(--ft-border);
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.ft-tape-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ft-tape-label {
+  color: var(--ft-muted);
+}
+
+.ft-tape-up {
+  color: var(--ft-green);
+}
+
+.ft-tape-down {
+  color: var(--ft-red);
+}
+
+.ft-tape-neutral {
+  color: var(--ft-amber);
+}
+
+/* ── Tool table on landing ── */
+.ft-tools-table {
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+.ft-tools-table th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ft-muted);
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--ft-border);
+}
+
+.ft-tools-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--ft-border);
+}
+
+.ft-tools-table code {
+  font-size: 0.85rem;
+}
+
+/* ── Section headers ── */
+.ft-section-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ft-muted);
+  margin: 3rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ft-border);
+}
+
+/* ── Install block ── */
+.ft-install {
+  border: 1px solid var(--ft-border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 2rem 0;
+  text-align: center;
+}
+
+[data-md-color-scheme="default"] .ft-install {
+  border-color: #d0d7de;
+  background: #f6f8fa;
+}
+
+.ft-install-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ft-muted);
+  margin-bottom: 1rem;
+}
+
+/* ── Provider status grid ── */
+.ft-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.8rem;
+  margin: 1rem 0;
+}
+
+.ft-status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ft-border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+[data-md-color-scheme="default"] .ft-status-item {
+  border-color: #d0d7de;
+}
+
+.ft-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ft-dot-green {
+  background: var(--ft-green);
+  box-shadow: 0 0 4px var(--ft-green);
+}
+
+.ft-dot-amber {
+  background: var(--ft-amber);
+  box-shadow: 0 0 4px var(--ft-amber);
+}
+
+/* ── Hide page title on home (custom template handles it) ── */
+.md-content__inner > h1:first-child {
+  display: none;
+}
+
+/* override only on the home page via body class if needed */

@@ -11,6 +11,15 @@ This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start
 - MCP entry uses `uv run --project <path>` (NOT `uvx` — package is not on PyPI)
 - `fin-toolkit status` shows provider/agent availability
 
+## Documentation Site
+
+- MkDocs Material at `docs/`, config in `mkdocs.yml`
+- Dashboard-style landing page with custom CSS (`docs/stylesheets/dashboard.css`)
+- GitHub Pages: `https://alexey1312.github.io/fin-toolkit/`
+- Auto-deploy via `.github/workflows/docs.yml` on push to `main` (docs/ or mkdocs.yml changes)
+- Local preview: `uv run --with mkdocs-material mkdocs serve`
+- README is minimal (like jdx/hk) — points to docs site for full documentation
+
 ## Development
 
 - `uv sync` to set up
