@@ -1,125 +1,128 @@
 ---
 name: kase-analysis
-description: "Analyze Kazakhstan stock exchange (KASE) stocks. Use when the user asks about KCEL, KZTO, HSBK, or Kazakhstan market stocks."
+description: "Analyze stocks listed on the Kazakhstan Stock Exchange (KASE). Use this skill whenever the user mentions KASE, Kazakhstan market, Kazakhstani stocks, or any of these tickers: KCEL, KZTO, HSBK, CCBN, KEGC, KZAP. Also trigger on phrases like 'analyze Halyk Bank', 'Kcell stock', 'KazTransOil', 'ForteBank', 'KEGOC', 'казахстанские акции', 'акции KASE', 'биржа Казахстана', or when the user asks about tenge-denominated investments, Central Asian equities, or frontier market analysis in the CIS region."
 ---
 
-# KASE Analysis Skill
+# KASE Analysis
 
-Analyze stocks listed on the Kazakhstan Stock Exchange (KASE) using fin-toolkit MCP tools, with awareness of KASE-specific data limitations and market context.
+Analyze stocks listed on the Kazakhstan Stock Exchange using fin-toolkit MCP tools, accounting for KASE-specific data constraints and market context.
 
-## Prerequisites
+## Tool Reference
 
-- fin-toolkit MCP server running (`fin-toolkit serve`)
-- Valid API keys configured for the data provider
-- Note: KASE data availability varies significantly by provider. The `kase` provider is recommended.
+See `_shared/mcp-tools-reference.md` for full MCP tool signatures and provider routing.
 
-## Common KASE Tickers
+## KASE Tickers
 
-| Ticker | Company | Sector |
-|--------|---------|--------|
-| HSBK | Halyk Bank | Banking |
-| KCEL | Kcell | Telecom |
-| KZTO | KazTransOil | Oil & Gas |
-| KEGC | KEGOC | Energy/Utilities |
-| CCBN | ForteBank | Banking |
+| Ticker | Company | Sector | Notes |
+|--------|---------|--------|-------|
+| HSBK | Halyk Bank | Banking | Largest bank, most liquid KASE stock |
+| KCEL | Kcell | Telecom | Mobile operator (Kazakhtelecom subsidiary) |
+| KZTO | KazTransOil | Oil & Gas | Oil pipeline monopoly |
+| KEGC | KEGOC | Utilities | Power grid operator |
+| CCBN | ForteBank | Banking | Second-tier bank |
+| KZAP | KAP (Kazatomprom) | Mining/Nuclear | LSE-listed as KAP.IL — no MOEX listing, prices may fail |
+
+## Provider Routing for KASE
+
+KASE tickers auto-route via market mapping (`kz` → `kase` provider):
+
+| Data Type | Provider | What You Get | Limitations |
+|-----------|----------|-------------|-------------|
+| **Prices** | KASE → Yahoo (`.ME` suffix) | Historical OHLCV | Only works for dual-listed KASE+MOEX tickers (KCEL, HSBK). KZAP will fail. |
+| **Metrics** | KASE API | Market cap, P/E, P/B, dividend yield | Real-time snapshot, no history |
+| **Financials** | Not available | — | KASE API has no financial statements |
+
+When `get_stock_data(ticker)` is called for a KASE ticker, the router automatically uses the KASE provider. No need to pass `provider="kase"` explicitly.
 
 ## Workflow
 
-### Step 1: Fetch Stock Data with KASE Provider
+### 1. Fetch Data
 
 ```
-get_stock_data(ticker, provider="kase")
-```
-
-Retrieve available historical price data. KASE stocks may have:
-- Shorter history than US equities
-- Lower trading frequency (some days with no trades)
-- Prices in KZT (Kazakhstani tenge)
-
-**Error handling:** If the `kase` provider is not available or returns an error, try without the provider parameter (default provider). If the ticker is not found, check that the user is using the correct KASE ticker symbol. Some KASE stocks may also trade as GDRs on the London Stock Exchange (e.g., HSBK as HSBK.L).
-
-### Step 2: Run Available Analysis
-
-Attempt both analysis types:
-
-```
-run_technical_analysis(ticker)
+get_stock_data(ticker, period="1y")
 run_fundamental_analysis(ticker)
+run_technical_analysis(ticker)
 ```
 
-**Important KASE data caveats:**
-- Technical indicators may be less reliable due to lower liquidity and wider bid-ask spreads
-- Fundamental data may be less standardized than US GAAP/IFRS reporting from major providers
-- Some financial ratios may be missing or computed differently
+Expect partial data — KASE coverage is sparser than US markets. Proceed with whatever comes back.
 
-**Error handling:** If either analysis tool returns limited or no data, inform the user clearly. Do not fabricate or assume missing data points. Proceed with whatever is available.
+**Likely outcomes:**
+- `get_stock_data` — works for HSBK, KCEL, KZTO (via Yahoo `.ME`). May fail for KZAP.
+- `run_fundamental_analysis` — returns KASE metrics (P/E, P/B, market cap). No full financial statements.
+- `run_technical_analysis` — works if price data was fetched. Low-liquidity caveats apply.
 
-### Step 3: Apply Kazakhstan Market Context
+### 2. Interpret with KASE Context
 
-When interpreting results, factor in KASE-specific considerations:
+KASE is a frontier market — standard analysis frameworks need adjustment:
 
-#### Macroeconomic Context
-- **Currency risk:** KZT can be volatile against USD; significant tenge depreciation affects real returns for foreign investors
-- **Oil dependency:** Kazakhstan's economy is heavily oil-dependent; oil price swings affect the entire market, not just energy stocks
-- **Interest rates:** National Bank of Kazakhstan base rate influences banking stocks and overall market valuations
-- **Geopolitical factors:** Regional dynamics (Russia, China, Central Asia) affect investor sentiment
+#### Macro Factors
+- **KZT currency risk**: tenge volatility directly impacts real returns for foreign investors. NBK interventions can be sudden.
+- **Oil dependency**: Kazakhstan GDP is ~25% oil/gas. Oil price moves affect the entire market, not just energy stocks.
+- **Interest rates**: NBK base rate affects banking margins (HSBK, CCBN) and all valuations.
+- **Geopolitics**: Russia/China/Central Asia dynamics. Sanctions spillover risk from Russia.
 
 #### Market Structure
-- **Liquidity:** KASE is a frontier/small emerging market; daily volumes are low compared to developed markets
-- **Concentration:** The market is dominated by a few large-cap names (HSBK, KCEL, KZTO)
-- **Information asymmetry:** Less analyst coverage and fewer publicly available research reports
-- **Dividend culture:** Many KASE blue chips pay relatively high dividends
+- **Low liquidity**: daily volumes are thin. Technical indicators are less reliable.
+- **Concentration**: top 3 stocks (HSBK, KCEL, KZTO) dominate turnover.
+- **High dividends**: KASE blue chips often yield 5-10%+. This is a feature, not a distortion.
+- **Limited coverage**: minimal sell-side research. Information asymmetry is real.
 
-#### Sector-Specific Notes
-- **Banking (HSBK, CCBN):** Sensitive to KZT interest rates, loan growth, and asset quality
-- **Telecom (KCEL):** Subscriber growth, ARPU trends, regulatory environment
-- **Oil & Gas (KZTO):** Pipeline volumes, oil price, government tariff regulation
-- **Utilities (KEGC):** Regulated tariffs, transmission volumes, government policy
+#### Sector Notes
+- **Banking (HSBK, CCBN)**: interest rate sensitivity, loan book quality, KZT rate moves
+- **Telecom (KCEL)**: subscriber growth, ARPU, regulatory environment, Kazakhtelecom ownership
+- **Oil & Gas (KZTO)**: pipeline volumes, tariff regulation, oil price linkage
+- **Utilities (KEGC)**: regulated tariffs, transmission volumes, government policy
+- **Mining (KZAP)**: uranium prices, global nuclear energy demand, Samruk-Kazyna state ownership
 
-### Step 4: Present Analysis
+### 3. Supplement with News
 
-Compile findings with appropriate caveats about data completeness.
+```
+search_news("{ticker} Kazakhstan stock {year}")
+```
 
-## Output Format
+Use broad queries — narrow KASE-specific queries often return empty results.
+
+### 4. Optional: Agent Analysis
+
+For deeper qualitative assessment:
+```
+run_all_agents(ticker)
+```
+
+Agent scores will reflect data limitations — interpret with lower confidence than US stocks.
+
+## Output Structure
 
 ### 1. Company Overview
 - Company name, KASE ticker, sector
-- Current price (KZT), approximate USD equivalent
-- Market cap, daily average volume
-- Data availability note (what was and was not available)
+- Current price (KZT) + approximate USD equivalent
+- Market cap, dividend yield
+- **Data availability note**: explicitly state what data was and wasn't available
 
 ### 2. Price Performance
-- Available return periods (1M, 3M, 6M, 1Y) in KZT terms
-- USD-adjusted returns if exchange rate data is available
-- Comparison to KASE index if available
+- Returns in KZT terms (1M, 3M, 6M, 1Y)
+- Note if price data is stale (last trade may be days old for illiquid names)
 
 ### 3. Technical Summary (if available)
 - Key indicators and signals
-- Caveat about low-liquidity impact on technical reliability
+- Caveat: "Technical indicators are less reliable due to low liquidity and wide spreads"
 
 ### 4. Fundamental Summary (if available)
-- Key ratios: P/E, P/B, dividend yield, ROE
-- Revenue and earnings trends
-- Balance sheet highlights
+- P/E, P/B, dividend yield, market cap
+- Comparison to sector norms (KASE valuations tend to be lower than developed markets)
 
 ### 5. Kazakhstan Market Context
-- Relevant macro factors affecting this stock
-- Sector-specific considerations
-- Known risks (currency, liquidity, regulatory)
+- Relevant macro factors for this specific stock
+- Sector dynamics
+- Currency/liquidity/regulatory risks
 
 ### 6. Assessment
-- Overall view with confidence level (high/medium/low based on data availability)
-- Key factors to watch
+- Overall view with **confidence level** (high/medium/low based on data completeness)
+- Key catalysts and risks to watch
 - Clear statement of data limitations
 
-## Common Issues
+## Edge Cases
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| MCP tool calls fail | fin-toolkit server not running | Run `fin-toolkit serve` in a separate terminal |
-| "API key not found" | Missing provider API key | Check fin-toolkit configuration for required API keys |
-| Ticker not found | Wrong ticker format or provider does not cover KASE | Verify KASE ticker symbol; try alternative providers or GDR tickers |
-| Very limited data | KASE coverage is sparse in many data providers | Inform user of limitations; provide what is available rather than nothing |
-| No fundamental data | Provider does not have KASE financials | Suggest user manually provide key financials if they have access to KASE disclosure portal (kase.kz) |
-| Currency confusion | Prices in KZT vs USD | Always state the currency; provide approximate USD conversion if possible |
-| Stale prices | Low liquidity means last trade may be days old | Check the date of the most recent price data point and warn if stale |
+- **KZAP (Kazatomprom)**: LSE-listed as KAP.IL, not on MOEX. `get_stock_data` will likely fail. Inform user and suggest looking up LSE data manually.
+- **Missing fundamentals**: KASE API provides basic metrics but no financial statements. If user needs deeper analysis, suggest finding PDF annual reports and using `parse_report(source, ticker)`.
+- **Currency display**: Prices are in KZT. Always state the currency. Use ~480 KZT/USD as approximate conversion (but check current rate context).

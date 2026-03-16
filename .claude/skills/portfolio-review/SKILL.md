@@ -1,128 +1,126 @@
 ---
 name: portfolio-review
-description: "Review a portfolio of stocks with risk analysis. Use when the user asks to review their portfolio, check correlations, or assess portfolio risk."
+description: "Review a multi-stock portfolio with risk analysis, correlations, and position sizing. Use this skill whenever the user asks to review their portfolio, assess portfolio risk, check diversification, analyze correlations between holdings, get rebalancing suggestions, or evaluate portfolio allocation. Trigger on phrases like 'review my portfolio', 'how risky is my portfolio?', 'check my holdings', 'are my stocks too correlated?', 'portfolio diversification', 'проверь мой портфель', 'оценка рисков портфеля', 'корреляция акций', 'ребалансировка'. Also trigger when the user provides a list of stocks and wants aggregate analysis or when they discuss position sizing."
 ---
 
-# Portfolio Review Skill
+# Portfolio Review
 
-Review a multi-stock portfolio using fin-toolkit MCP tools to assess individual holdings, correlations, and aggregate risk.
+Review a multi-stock portfolio: individual holdings, risk metrics, correlations, diversification, and actionable insights.
 
-## Prerequisites
+## Tool Reference
 
-- fin-toolkit MCP server running (`fin-toolkit serve`)
-- Valid API keys configured for the data provider
-- User provides a list of tickers (and optionally weights/allocation percentages)
+See `_shared/mcp-tools-reference.md` for full MCP tool signatures and provider routing.
 
 ## Workflow
 
-### Step 1: Gather Portfolio Holdings
+### 1. Gather Holdings
 
-Ask the user for:
-- List of ticker symbols
-- Allocation weights (percentage or dollar amounts)
-- If no weights provided, assume equal weighting
+Ask for or extract from conversation:
+- List of tickers
+- Weights (% or dollar amounts). If not provided — assume equal weighting and note the assumption.
 
-### Step 2: Analyze Each Holding
-
-For each ticker in the portfolio, call all three analysis tools:
-
+If the user has a portfolio in fin-toolkit, use:
 ```
-get_stock_data(ticker, period="1y")
-run_technical_analysis(ticker)
+manage_portfolio(action="show", portfolio="name")
+```
+This returns current positions with live prices.
+
+### 2. Analyze Individual Holdings
+
+For each ticker:
+```
 run_fundamental_analysis(ticker)
+run_technical_analysis(ticker)
 ```
 
-Extract per-holding:
-- Current price and 1Y return
-- Key technical signal (bullish/bearish/neutral)
-- Key fundamentals (P/E, revenue growth, margins, debt-to-equity)
+Extract per holding:
+- Current price and YTD/1Y return
+- Technical signal (bullish/bearish/neutral)
+- Key fundamentals: P/E, revenue growth, margins, D/E
+- Red flags (if any)
 
-**Error handling:** If any tool call fails for a specific ticker, log the error and continue with remaining tickers. Report which holdings could not be analyzed at the end.
+If a tool call fails for a specific ticker — log it and continue. Report failures at the end.
 
-### Step 3: Run Portfolio Risk Analysis
-
-Call the risk analysis tool with all tickers:
+### 3. Portfolio Risk Analysis
 
 ```
-run_risk_analysis(tickers)
+run_risk_analysis(tickers, period="1y")
 ```
 
-Where `tickers` is the list of all portfolio ticker symbols.
+This returns:
+- **Volatility**: 30d, 90d, 252d annualized
+- **VaR**: 95% and 99% daily/monthly
+- **Correlation matrix**: pairwise correlations between all holdings
+- **Max drawdown**: largest peak-to-trough decline
 
-Extract from the result:
-- **Correlation matrix:** Pairwise correlations between holdings
-- **Portfolio volatility:** Annualized standard deviation of the weighted portfolio
-- **Value at Risk (VaR):** 95% and 99% confidence levels (daily and/or monthly)
-- **Maximum drawdown:** Largest peak-to-trough decline in the historical period
-- **Sharpe ratio:** Risk-adjusted return (if risk-free rate is available)
-- **Beta:** Portfolio beta relative to the benchmark (S&P 500)
+If risk analysis fails, compute basic stats manually from price data.
 
-**Error handling:** If `run_risk_analysis` fails, compute basic statistics manually from the individual `get_stock_data` results (returns, simple correlation). Warn the user that advanced risk metrics are unavailable.
+### 4. Portfolio-Level Recommendation
 
-### Step 4: Assess Diversification
+```
+run_portfolio_analysis(tickers, period="1y")
+```
 
-Analyze the correlation matrix:
-- **Highly correlated pairs (>0.8):** These holdings move together and provide limited diversification benefit. Flag them.
-- **Negative or low correlations (<0.3):** These provide good diversification. Highlight them.
-- **Sector concentration:** If multiple holdings are in the same sector, note the concentration risk.
+Returns per-ticker recommendations with **correlation-adjusted position sizing** — positions in highly correlated stocks get reduced, negatively correlated pairs get boosted.
 
-### Step 5: Compile Portfolio Summary
+### 5. Assess Diversification
 
-Bring all analysis together into a comprehensive review.
+From the correlation matrix:
+- **Highly correlated pairs (>0.8)**: move together, limited diversification. Flag them.
+- **Low correlation pairs (<0.3)**: good diversification benefit. Highlight them.
+- **Sector concentration**: multiple holdings in same sector = concentration risk.
+- **Geographic concentration**: all US, all Russia, etc.
 
-## Output Format
+## Output Structure
 
 ### 1. Portfolio Overview
 
-| # | Ticker | Weight | Current Price | 1Y Return | Sector |
-|---|--------|--------|--------------|-----------|--------|
+| # | Ticker | Weight | Price | 1Y Return | Sector |
+|---|--------|--------|-------|-----------|--------|
 | 1 | AAPL | 25% | $XXX | +XX% | Tech |
-| 2 | ... | ... | ... | ... | ... |
 
-Total portfolio value (if dollar amounts provided), number of holdings, sector breakdown.
+Total holdings count, sector breakdown.
 
-### 2. Individual Holdings Summary
+### 2. Individual Holdings
 
-For each holding, a brief card:
-- **Ticker:** Price, 1Y return
-- **Technical:** Bullish/Bearish/Neutral (key signal)
-- **Fundamental:** P/E, revenue growth, margin trend
-- **Verdict:** Strength/concern for this position
+Brief card per holding:
+- Price, return, technical signal
+- P/E, margin trend, D/E
+- One-line verdict (strength or concern)
 
 ### 3. Risk Metrics
 
 | Metric | Value |
 |--------|-------|
-| Portfolio Annualized Volatility | X.X% |
-| Portfolio Beta (vs S&P 500) | X.XX |
-| Sharpe Ratio | X.XX |
-| VaR (95%, 1-day) | -X.X% |
-| VaR (99%, 1-day) | -X.X% |
-| Maximum Drawdown (1Y) | -X.X% |
+| Portfolio Volatility (ann.) | X.X% |
+| VaR 95% (1-day) | -X.X% |
+| VaR 99% (1-day) | -X.X% |
+| Max Drawdown (1Y) | -X.X% |
 
 ### 4. Correlation Matrix
 
-Present the pairwise correlation matrix as a table. Highlight pairs with correlation > 0.8 and pairs with correlation < 0.3.
+Table with pairwise correlations. Mark >0.8 as high, <0.3 as low.
 
 ### 5. Diversification Assessment
-- Sector concentration analysis
-- Geographic concentration (if applicable)
-- Highly correlated pairs that reduce diversification
-- Suggestions for improving diversification (if appropriate)
+- Sector/geographic concentration
+- Correlated pairs reducing diversification
+- Suggestions for improvement (only if user asks, or if concentration is extreme)
 
-### 6. Portfolio Actionable Summary
-- Top strengths of the portfolio
-- Top risks and concentration concerns
-- Any individual holdings with red flags (technical or fundamental)
-- Optional rebalancing suggestions (only if user asks)
+### 6. Position Sizing (from portfolio analysis)
 
-## Common Issues
+| Ticker | Signal | Raw Size | Adjusted Size | Reason |
+|--------|--------|----------|---------------|--------|
+| AAPL | Bullish | 20% | 18% | High corr with MSFT |
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| MCP tool calls fail | fin-toolkit server not running | Run `fin-toolkit serve` in a separate terminal |
-| "API key not found" | Missing provider API key | Check fin-toolkit configuration for required API keys |
-| One or more tickers not found | Invalid ticker or not covered by provider | Report which tickers failed and proceed with the rest |
-| `run_risk_analysis` fails | Too few tickers or insufficient overlapping data | Fall back to manual correlation computation from price data |
-| Slow response for large portfolio | Many tickers means many API calls | Process in batches; warn user that large portfolios take longer |
-| Missing weights | User did not specify allocation | Assume equal weighting and note this assumption |
+### 7. Action Summary
+- Top strengths
+- Top risks
+- Red flag holdings
+- Rebalancing ideas (if requested)
+
+## Edge Cases
+
+- **Mixed markets** (US + RU + KZ tickers): each ticker routes to appropriate provider automatically. Risk analysis may have incomplete correlations if price histories don't overlap.
+- **Large portfolios (>10 tickers)**: `run_risk_analysis` and `run_portfolio_analysis` accept lists. `deep_dive` is capped at 10 — split into batches if needed.
+- **Single stock**: still works, but correlation analysis is meaningless. Focus on individual analysis + risk metrics.
+- **Portfolio store integration**: if user has portfolios in fin-toolkit, `manage_portfolio(action="show")` gives current positions. `portfolio_performance(portfolio, period)` gives P&L breakdown.

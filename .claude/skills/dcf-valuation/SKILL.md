@@ -1,146 +1,122 @@
 ---
 name: dcf-valuation
-description: "Run DCF (Discounted Cash Flow) valuation on a stock. Use when the user asks to value a stock, compute intrinsic value, or run DCF analysis."
+description: "Run DCF (Discounted Cash Flow) valuation on a stock to estimate intrinsic value per share. Use this skill whenever the user mentions valuation, intrinsic value, fair value, DCF, discounted cash flow, target price calculation, or asks questions like 'is AAPL undervalued?', 'what is the fair value of Tesla?', 'сколько стоит акция?', 'оценка компании', 'целевая цена'. Also trigger when the user discusses WACC, terminal value, margin of safety, or free cash flow projections in the context of stock valuation."
 ---
 
-# DCF Valuation Skill
+# DCF Valuation
 
-Perform a Discounted Cash Flow valuation using fin-toolkit MCP tools to estimate a stock's intrinsic value.
+Estimate a stock's intrinsic value using Discounted Cash Flow analysis via fin-toolkit MCP tools.
 
-## Prerequisites
+## Tool Reference
 
-- fin-toolkit MCP server running (`fin-toolkit serve`)
-- Valid API keys configured for the data provider
+See `_shared/mcp-tools-reference.md` for full MCP tool signatures and provider routing.
 
 ## Workflow
 
-### Step 1: Fetch Historical Price Data
+### 1. Gather Data
 
-Call the MCP tool to retrieve 5 years of historical prices:
+Fetch prices and fundamentals concurrently:
 
 ```
 get_stock_data(ticker, period="5y")
-```
-
-Extract from the result:
-- Current share price
-- Historical price trajectory (used later for sanity-checking growth assumptions)
-
-**Error handling:** If `get_stock_data` returns an error, check that the ticker symbol is valid and the MCP server is running. Inform the user if the provider does not cover this ticker.
-
-### Step 2: Retrieve Fundamental Data
-
-Call the MCP tool to pull financial ratios and statements:
-
-```
 run_fundamental_analysis(ticker)
 ```
 
-Extract from the result:
-- Revenue, operating income, net income (trailing and multi-year)
-- Free Cash Flow (FCF) or the components to compute it (operating cash flow minus capex)
-- Shares outstanding
-- Existing debt and cash balances
+From the results, extract:
+- **Current price** and historical trajectory
+- **Free Cash Flow** (or operating cash flow − capex to compute it)
+- **Revenue, net income** (trailing + multi-year for growth estimation)
+- **Shares outstanding, debt, cash** (for equity bridge)
 
-**Error handling:** If `run_fundamental_analysis` returns incomplete data, warn the user which fields are missing and whether the valuation can still proceed with reasonable assumptions.
+If data is incomplete — tell the user which fields are missing and whether DCF can proceed with assumptions.
 
-### Step 3: Determine Growth Rate Assumption
+### 2. Determine Growth Rate
 
-Ask the user for their preferred growth rate. Provide guidance:
+Present the user with options and let them choose:
 
-- **Analyst consensus:** If available in the fundamental data, surface the consensus revenue/earnings growth estimate.
-- **Historical CAGR:** Calculate the compound annual growth rate of FCF or revenue over the available history.
-- **Default:** If the user has no preference, use the lower of analyst consensus and 5-year historical CAGR as a conservative baseline.
+- **Historical CAGR**: compute from available FCF or revenue history
+- **Analyst consensus**: surface if present in fundamental data
+- **Conservative default**: lower of historical CAGR and consensus
 
-Present the options clearly and let the user decide before proceeding.
+Frame this as a meaningful decision — growth rate is the most impactful assumption in DCF. Different rates lead to vastly different valuations, so the user's view on the company's future matters here.
 
-### Step 4: Determine Discount Rate (WACC)
+### 3. Determine Discount Rate (WACC)
 
-Ask the user for a discount rate or WACC. Provide guidance:
+Offer guidance, let user decide:
 
-- **Cost of equity:** Can be estimated via CAPM — risk-free rate (10Y Treasury ~4-5%) + beta * equity risk premium (~5-6%).
-- **Cost of debt:** Interest expense / total debt, tax-adjusted.
-- **WACC formula:** (E/V) * Re + (D/V) * Rd * (1 - tax rate), where E = market cap, D = total debt, V = E + D.
-- **Typical ranges:** 8-12% for large-cap US equities; higher for small-cap or emerging markets.
-- **Default:** If the user has no preference, use 10% as a reasonable starting point for a US large-cap.
+- **CAPM cost of equity**: risk-free rate (10Y Treasury ~4-5%) + beta × equity risk premium (~5-6%)
+- **Cost of debt**: interest expense / total debt, tax-adjusted
+- **WACC**: (E/V) × Re + (D/V) × Rd × (1 − tax rate)
+- **Typical ranges**: 7-9% large-cap US, 9-12% mid/small-cap, 10-14% emerging markets
+- **Default**: 10% if user has no preference
 
-### Step 5: Project Free Cash Flows (5-Year Horizon)
+See `references/dcf-guide.md` for WACC calculation details and size/country premium adjustments.
 
-Using the most recent FCF as the base, project forward 5 years:
+### 4. Project Free Cash Flows (5-Year)
 
-| Year | FCF |
-|------|-----|
-| 0 (base) | Latest FCF from fundamentals |
-| 1 | FCF_0 * (1 + growth_rate) |
-| 2 | FCF_1 * (1 + growth_rate) |
-| 3 | FCF_2 * (1 + growth_rate) |
-| 4 | FCF_3 * (1 + growth_rate) |
-| 5 | FCF_4 * (1 + growth_rate) |
+Use most recent FCF as base, project forward:
 
-If the user prefers a two-stage model (high growth then fade), apply the higher rate for years 1-3 and a lower terminal growth rate for years 4-5.
+| Year | FCF | PV Factor | Present Value |
+|------|-----|-----------|---------------|
+| 0 (base) | from fundamentals | — | — |
+| 1–5 | FCF × (1 + growth)^n | 1/(1+WACC)^n | FCF_n × PV Factor |
 
-### Step 6: Calculate Terminal Value
+For two-stage models: higher rate years 1-3, lower rate years 4-5 transitioning to terminal.
 
-Use one of two approaches (ask user preference, default to Gordon Growth):
+### 5. Terminal Value
 
-**Gordon Growth Model:**
-```
-Terminal Value = FCF_5 * (1 + terminal_growth_rate) / (WACC - terminal_growth_rate)
-```
-- Terminal growth rate should be 2-3% (roughly GDP growth). Never exceed WACC.
-
-**Exit Multiple Method:**
-```
-Terminal Value = FCF_5 * exit_EV_to_FCF_multiple
-```
-- Use sector-median EV/FCF multiple as default.
-
-### Step 7: Discount to Present Value
-
-Discount each projected FCF and the terminal value back to today:
+Default to Gordon Growth Model (ask user if they prefer exit multiple):
 
 ```
-PV = FCF_t / (1 + WACC)^t
-Enterprise Value = sum(PV of FCFs) + PV of Terminal Value
-Equity Value = Enterprise Value - Net Debt + Cash
+TV = FCF_5 × (1 + g_terminal) / (WACC − g_terminal)
+```
+
+- Terminal growth: 2-3% (must be < WACC)
+- If TV is >80% of enterprise value, flag the model's sensitivity to terminal assumptions
+
+See `references/dcf-guide.md` for exit multiple approach and three-stage model.
+
+### 6. Compute Intrinsic Value
+
+```
+Enterprise Value = Σ PV(FCFs) + PV(Terminal Value)
+Equity Value = Enterprise Value − Net Debt + Cash
 Intrinsic Value Per Share = Equity Value / Shares Outstanding
 ```
 
-Present the full calculation table to the user.
-
-### Step 8: Margin of Safety Assessment
-
-Compare the computed intrinsic value to the current market price:
+### 7. Margin of Safety
 
 ```
-Margin of Safety = (Intrinsic Value - Current Price) / Intrinsic Value * 100%
+Margin of Safety = (Intrinsic Value − Current Price) / Intrinsic Value × 100%
 ```
 
-Provide interpretation:
-- **> 30% margin of safety:** Potentially undervalued with a good safety buffer
-- **10-30%:** Modestly undervalued, reasonable entry depending on conviction
-- **< 10%:** Roughly fairly valued
-- **Negative:** Stock appears overvalued relative to DCF estimate
+- **>30%**: potentially undervalued with good buffer
+- **10-30%**: modestly undervalued
+- **<10%**: roughly fair value
+- **Negative**: appears overvalued vs DCF estimate
 
-Always caveat that DCF is highly sensitive to growth and discount rate assumptions. Recommend the user run a sensitivity analysis (see `references/dcf-guide.md`).
+### 8. Sensitivity Analysis
 
-## Output Format
+Always include a sensitivity table — DCF is highly assumption-dependent:
 
-Present results as a structured summary:
+| WACC \ Growth | 3% | 5% | 7% | 9% |
+|---------------|-----|-----|-----|-----|
+| 8% | $XX | $XX | $XX | $XX |
+| 10% | $XX | $XX | $XX | $XX |
+| 12% | $XX | $XX | $XX | $XX |
 
-1. **Company overview** — name, ticker, sector, current price
-2. **Key assumptions** — growth rate, WACC, terminal growth, projection period
+## Output Structure
+
+1. **Company overview** — ticker, sector, current price
+2. **Key assumptions** — growth rate, WACC, terminal growth, rationale for each
 3. **FCF projection table** — year-by-year with present values
-4. **Valuation result** — enterprise value, equity value, intrinsic value per share
-5. **Margin of safety** — percentage and interpretation
-6. **Sensitivity table** — show intrinsic value across ±1-2% variations in growth and WACC
+4. **Valuation** — enterprise value → equity value → intrinsic value per share
+5. **Margin of safety** — percentage + interpretation
+6. **Sensitivity table** — ±2% variations in growth and WACC
 
-## Common Issues
+## Edge Cases
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| MCP tool calls fail | fin-toolkit server not running | Run `fin-toolkit serve` in a separate terminal |
-| "API key not found" | Missing provider API key | Check fin-toolkit configuration for required API keys |
-| Negative FCF | Company is not FCF-positive | Warn user that DCF is unreliable for pre-profit companies; suggest revenue-based or comparable valuation instead |
-| Unrealistic intrinsic value | Extreme growth or low WACC assumptions | Re-check inputs; run sensitivity analysis to show range |
-| Missing financial data | Provider does not cover this stock | Try a different provider or inform user of data limitations |
+- **Negative FCF**: DCF doesn't work for cash-burning companies. Suggest revenue multiples or `generate_investment_idea(ticker)` for alternative approaches.
+- **Cyclical companies**: Normalize FCF over a full cycle instead of using trailing period.
+- **Financial companies (banks)**: Standard FCF is meaningless — use dividend discount model or excess return model instead.
+- **Russian/KZ tickers**: Prices in local currency. Add country risk premium to WACC (3-5% for Russia, 2-4% for Kazakhstan).

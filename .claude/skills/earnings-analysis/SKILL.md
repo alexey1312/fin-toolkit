@@ -1,101 +1,98 @@
 ---
 name: earnings-analysis
-description: "Analyze earnings quality and financial health. Use when the user asks about earnings, margins, revenue growth, or financial health."
+description: "Analyze a company's earnings quality, profitability, margin trends, and financial health. Use this skill whenever the user asks about earnings, profitability, margins, revenue growth, cash flow quality, balance sheet health, or financial statements. Trigger on phrases like 'how profitable is AAPL?', 'are Tesla's margins improving?', 'is this company financially healthy?', 'покажи прибыль компании', 'как с маржой у Сбера?', 'качество прибыли', 'финансовое здоровье'. Also trigger when the user asks to compare earnings across periods, check for accounting red flags, or assess whether a company's earnings are sustainable."
 ---
 
-# Earnings Analysis Skill
+# Earnings Analysis
 
-Analyze a company's earnings quality, margin trends, and overall financial health using fin-toolkit MCP tools.
+Analyze a company's earnings quality, margin trends, and financial health using fin-toolkit MCP tools.
 
-## Prerequisites
+## Tool Reference
 
-- fin-toolkit MCP server running (`fin-toolkit serve`)
-- Valid API keys configured for the data provider
+See `_shared/mcp-tools-reference.md` for full MCP tool signatures and provider routing.
 
 ## Workflow
 
-### Step 1: Fetch Historical Price Data
-
-```
-get_stock_data(ticker, period="5y")
-```
-
-Retrieve 5 years of price data to contextualize earnings against stock performance. Extract current price and historical trajectory.
-
-**Error handling:** If `get_stock_data` fails, verify the ticker and MCP server status. Proceed to Step 2 even if price data is unavailable — earnings analysis can still be performed.
-
-### Step 2: Retrieve Fundamental Data
+### 1. Fetch Data
 
 ```
 run_fundamental_analysis(ticker)
+get_stock_data(ticker, period="5y")
 ```
 
-Extract from the result:
-- **Income statement:** Revenue, gross profit, operating income, net income (multi-year)
-- **Margins:** Gross margin, operating margin, net margin
-- **Per-share metrics:** EPS (diluted), revenue per share
-- **Cash flow:** Operating cash flow, free cash flow
-- **Balance sheet:** Total assets, total liabilities, shareholders' equity, cash, debt
+From fundamentals, extract:
+- **Income statement**: revenue, gross profit, operating income, net income (multi-year if available via `income_history`)
+- **Margins**: gross, operating, net
+- **Cash flow**: operating cash flow, free cash flow (via `cash_flow_history`)
+- **Balance sheet**: assets, liabilities, equity, cash, debt
+- **Per-share**: EPS, revenue per share
 
-**Error handling:** If `run_fundamental_analysis` returns incomplete data, note which fields are missing. If core income statement data is absent, inform the user that a full earnings analysis is not possible with the available data.
+Price data provides context for earnings vs stock performance.
 
-### Step 3: Analyze Trends and Quality
+If fundamental data is incomplete (common for Russian tickers via SmartLab or MOEX), note which fields are missing and proceed with what's available.
 
-#### Revenue Analysis
-- Calculate year-over-year revenue growth for each available period
-- Identify acceleration or deceleration in growth
-- Note any one-time or non-recurring revenue items if visible
+### 2. Revenue & Growth Analysis
 
-#### Margin Analysis
-- Track gross margin, operating margin, and net margin over time
-- Identify expanding or contracting margins
-- Compare margins to sector averages if the user provides them or if available in the data
+- YoY revenue growth for each available period
+- Growth acceleration or deceleration trend
+- Revenue consistency — smooth vs lumpy (one-time items)
 
-#### Earnings Quality Assessment
-- **Accrual ratio:** Compare net income to operating cash flow. If net income significantly exceeds OCF, earnings quality is lower (aggressive accrual accounting).
-- **Cash conversion:** FCF / Net Income ratio. Above 1.0 is strong; below 0.5 is a warning sign.
-- **Consistency:** Look for volatile swings in earnings that suggest one-time items or accounting changes.
-- **SBC impact:** If stock-based compensation is available, note its magnitude relative to net income.
+### 3. Margin Analysis
 
-#### Balance Sheet Health
-- **Leverage:** Debt-to-equity ratio, net debt / EBITDA
-- **Liquidity:** Current ratio (if available), cash as percentage of total assets
-- **Debt trajectory:** Is the company deleveraging or taking on more debt?
+Track across periods:
+- **Gross margin** — pricing power and cost structure
+- **Operating margin** — operational efficiency
+- **Net margin** — bottom-line profitability after all costs
 
-### Step 4: Period-over-Period Comparison
+Identify: expanding (good), stable (neutral), or contracting (concern).
 
-Construct a comparison of the most recent period versus prior periods:
+### 4. Earnings Quality Assessment
 
-- Most recent quarter vs same quarter last year (YoY)
-- Most recent annual vs prior annual
-- Identify any inflection points or notable changes
+This is the core insight — not all earnings are equal:
 
-### Step 5: Present Assessment
+| Metric | How to Compute | Good | Concern |
+|--------|---------------|------|---------|
+| **Cash conversion** | FCF / Net Income | >1.0 | <0.5 |
+| **Accrual ratio** | (Net Income − OCF) / Total Assets | Low (<5%) | High (>10%) |
+| **Earnings consistency** | Volatility of YoY earnings | Stable | Wild swings |
+| **SBC impact** | Stock-based comp / Net Income | <10% | >25% |
 
-Compile the analysis into a structured report with a clear quality verdict.
+High net income + low cash conversion = aggressive accounting. Flag this clearly.
 
-## Output Format
+### 5. Balance Sheet Health
+
+| Metric | Compute | Conservative | Aggressive |
+|--------|---------|-------------|-----------|
+| **Debt-to-Equity** | Total debt / Equity | <0.5 | >2.0 |
+| **Net Debt / EBITDA** | (Debt − Cash) / EBITDA | <2x | >4x |
+| **Cash position** | Cash / Total assets | >10% | <3% |
+
+Track debt trajectory: is the company deleveraging or loading up?
+
+### 6. Period Comparison
+
+- Most recent year vs prior year (YoY change)
+- Multi-year trend (3-5 years if available)
+- Identify inflection points — when did margins start expanding/contracting?
+
+## Output Structure
 
 ### 1. Company Overview
-- Name, ticker, sector, current price, market cap
+Ticker, sector, current price, market cap.
 
-### 2. Revenue and Growth
+### 2. Revenue & Growth Table
 
 | Period | Revenue | YoY Growth |
 |--------|---------|------------|
-| FY-4 | $X.XB | — |
-| FY-3 | $X.XB | X.X% |
-| FY-2 | $X.XB | X.X% |
-| FY-1 | $X.XB | X.X% |
-| FY (latest) | $X.XB | X.X% |
+| FY-4 through FY (latest) | values | percentages |
 
-### 3. Profitability Margins
+### 3. Profitability Margins Table
 
 | Period | Gross Margin | Operating Margin | Net Margin |
 |--------|-------------|-----------------|------------|
-| (each year) | X.X% | X.X% | X.X% |
+| each year | % | % | % |
 
-Trend commentary: expanding, stable, or contracting.
+With trend commentary.
 
 ### 4. Earnings Quality Scorecard
 
@@ -111,20 +108,15 @@ Trend commentary: expanding, stable, or contracting.
 | Metric | Value | Assessment |
 |--------|-------|------------|
 | Debt-to-Equity | X.Xx | Conservative / Moderate / Aggressive |
-| Net Debt / EBITDA | X.Xx | Low / Moderate / High leverage |
+| Net Debt / EBITDA | X.Xx | Low / Moderate / High |
 | Cash Position | $X.XB | Ample / Adequate / Thin |
 
 ### 6. Overall Assessment
-- One-paragraph summary of financial health and earnings quality
-- Key strengths and key risks
-- Any red flags (deteriorating margins, rising leverage, poor cash conversion)
+One paragraph: financial health verdict, key strengths, key risks, red flags.
 
-## Common Issues
+## Edge Cases
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| MCP tool calls fail | fin-toolkit server not running | Run `fin-toolkit serve` in a separate terminal |
-| "API key not found" | Missing provider API key | Check fin-toolkit configuration for required API keys |
-| Incomplete financial statements | Company is foreign, small-cap, or recently listed | Inform user of data gaps; analysis will be partial |
-| Negative earnings | Company is pre-profit | Focus on revenue growth, gross margin trend, and cash burn rate instead |
-| Stale data | Provider data not yet updated for latest quarter | Note the most recent period available and warn user |
+- **Pre-profit companies**: Focus on revenue growth, gross margin trajectory, cash burn rate. Skip earnings quality metrics.
+- **Russian companies** (SmartLab data): Financials in billions of rubles. SmartLab provides IFRS statements with history. MOEX gives only basic metrics (no financials).
+- **Banks**: Different financial structure — focus on NIM (net interest margin), loan growth, asset quality instead of standard operating margins.
+- **Incomplete data**: If `income_history` / `cash_flow_history` are empty, work with whatever single-period data is available. State the limitation.

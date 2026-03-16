@@ -1,108 +1,93 @@
 ---
 name: technical-screen
-description: "Run technical analysis on a stock. Use when the user asks for technical screening, chart analysis, RSI, MACD, or trend analysis."
+description: "Run technical analysis on a stock to identify trends, momentum, and actionable signals. Use this skill whenever the user asks for technical screening, chart analysis, trend analysis, or mentions specific indicators like RSI, MACD, EMA, SMA, Bollinger Bands, moving averages, support/resistance, overbought/oversold, golden cross, death cross. Trigger on phrases like 'is AAPL overbought?', 'what's the trend on Tesla?', 'show me the technicals for MSFT', 'RSI of SBER', 'технический анализ', 'тренд акции', 'уровни поддержки', 'перекупленность'. Also trigger when the user wants to time an entry/exit, asks about short-term signals, or wants chart-based analysis."
 ---
 
-# Technical Screen Skill
+# Technical Screen
 
-Perform technical analysis on a stock using fin-toolkit MCP tools to identify trends, momentum, and actionable signals.
+Perform technical analysis on a stock using fin-toolkit MCP tools to identify trends, momentum, support/resistance, and actionable signals.
 
-## Prerequisites
+## Tool Reference
 
-- fin-toolkit MCP server running (`fin-toolkit serve`)
-- Valid API keys configured for the data provider
+See `_shared/mcp-tools-reference.md` for full MCP tool signatures and provider routing.
 
 ## Workflow
 
-### Step 1: Fetch Historical Price Data
+### 1. Fetch Data
 
 ```
 get_stock_data(ticker, period="1y")
-```
-
-Retrieve at least 1 year of daily OHLCV data. For shorter-term analysis, the user may request `period="3mo"` or `period="6mo"`.
-
-**Error handling:** If `get_stock_data` fails, verify the ticker is valid and the MCP server is running. Some tickers (OTC, foreign) may not be available from all providers.
-
-### Step 2: Run Technical Analysis
-
-```
 run_technical_analysis(ticker)
 ```
 
-This computes standard technical indicators. Extract from the result:
+`run_technical_analysis` computes: RSI (14), EMA (20/50/200), MACD (12/26/9), Bollinger Bands (20, 2σ), trend signals, and overall bias.
 
-- **Trend indicators:** SMA (50-day, 200-day), EMA (12, 26)
-- **Momentum indicators:** RSI (14-day), MACD (12/26/9), Stochastic Oscillator
-- **Volatility indicators:** Bollinger Bands (20-day, 2 std), ATR (14-day)
-- **Volume indicators:** OBV, Volume SMA
+For shorter-term analysis, user may request `period="3m"` or `period="6m"` for prices — but technical indicators are always computed on available history by the tool.
 
-**Error handling:** If `run_technical_analysis` returns partial data (e.g., missing some indicators), note which indicators are unavailable and proceed with what is available.
+### 2. Interpret Signals
 
-### Step 3: Interpret Signals
+#### Trend
+- **Bullish**: price > EMA 50 > EMA 200 (golden cross territory)
+- **Bearish**: price < EMA 50 < EMA 200 (death cross territory)
+- **Neutral**: mixed — price oscillating around moving averages
 
-Analyze each indicator category and determine its signal:
+#### Momentum
+- **RSI**: <30 oversold (potential bounce), >70 overbought (potential pullback), 30-70 neutral
+- **MACD**: signal line crossover direction, histogram magnitude and acceleration
+- Look for **divergences** — price making new highs while RSI makes lower highs = bearish divergence
 
-#### Trend Assessment
-- **Bullish:** Price above 50-day SMA, 50-day SMA above 200-day SMA (golden cross territory)
-- **Bearish:** Price below 50-day SMA, 50-day SMA below 200-day SMA (death cross territory)
-- **Neutral:** Mixed signals, price oscillating around SMAs
+#### Volatility
+- **Bollinger Bands**: price near upper = potential resistance, near lower = potential support. Band squeeze (narrowing) often precedes a breakout.
+- Compare current volatility to historical average from `run_risk_analysis(tickers=[ticker])` if additional context is needed.
 
-#### Momentum Assessment
-- **RSI:** Below 30 = oversold (potential buy), above 70 = overbought (potential sell), 30-70 = neutral
-- **MACD:** Signal line crossover bullish/bearish, histogram direction and magnitude
-- **Stochastic:** Below 20 = oversold, above 80 = overbought
+#### Volume (if available in price data)
+- Rising volume confirming price direction = strong signal
+- Price move on declining volume = weak/suspect signal
 
-#### Volatility Assessment
-- **Bollinger Bands:** Price near upper band = potential resistance, near lower band = potential support, bandwidth expansion = increasing volatility
-- **ATR:** Compare current ATR to historical average — elevated ATR suggests heightened volatility
+### 3. Identify Key Levels
 
-#### Volume Assessment
-- **OBV trend:** Rising OBV confirms price uptrend, falling OBV confirms downtrend
-- **Volume vs average:** Above-average volume on up days is bullish; above-average volume on down days is bearish
+- **Support**: recent lows, EMA 50/200 acting as floor, lower Bollinger Band
+- **Resistance**: recent highs, EMA levels acting as ceiling, upper Bollinger Band
 
-### Step 4: Present Summary
+### 4. Optional: Combine with Agent View
 
-Compile findings into a structured, actionable report.
+For a more complete picture, add fundamental context:
+```
+run_recommendation(ticker)
+```
 
-## Output Format
+This gives a combined technical + fundamental signal with position size and stop-loss.
+
+## Output Structure
 
 ### 1. Overview
-- Ticker, current price, price change (1D, 1W, 1M, 3M, 6M, 1Y)
-- Current trend direction (Bullish / Bearish / Neutral)
+Ticker, current price, 1D/1W/1M/3M/1Y price change. Overall trend direction.
 
 ### 2. Technical Indicators Table
 
 | Indicator | Value | Signal |
 |-----------|-------|--------|
-| SMA 50 | $XXX | Above/Below price |
-| SMA 200 | $XXX | Above/Below price |
+| EMA 20 | $XXX | Above/Below price |
+| EMA 50 | $XXX | Above/Below price |
+| EMA 200 | $XXX | Above/Below price |
 | RSI (14) | XX | Overbought/Oversold/Neutral |
 | MACD | X.XX | Bullish/Bearish crossover |
-| Bollinger Band Position | Upper/Mid/Lower | Interpretation |
-| ATR (14) | $X.XX | High/Normal/Low volatility |
-| OBV Trend | Rising/Falling | Confirming/Diverging |
+| Bollinger Position | Upper/Mid/Lower | Interpretation |
 
 ### 3. Key Signals
-- List the 2-3 most significant signals and what they suggest
-- Note any divergences (e.g., price rising but RSI falling)
+2-3 most significant signals. Note any divergences.
 
-### 4. Support and Resistance Levels
-- Nearest support level(s)
-- Nearest resistance level(s)
-- Key SMA levels acting as support/resistance
+### 4. Support & Resistance
+- Nearest support levels
+- Nearest resistance levels
+- Which EMAs are acting as dynamic S/R
 
 ### 5. Actionable Takeaway
-- One-paragraph plain-language summary of what the technicals suggest
-- Timeframe context (short-term vs medium-term outlook)
-- Clear caveat that technical analysis is probabilistic, not predictive
+One paragraph: what the technicals suggest, timeframe context (short vs medium term), and caveat that technical analysis is probabilistic.
 
-## Common Issues
+## Edge Cases
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| MCP tool calls fail | fin-toolkit server not running | Run `fin-toolkit serve` in a separate terminal |
-| "API key not found" | Missing provider API key | Check fin-toolkit configuration for required API keys |
-| Insufficient data for indicators | Stock recently IPO'd or data period too short | Use a longer period or note that indicators requiring 200 days of data are unavailable |
-| Flat/meaningless indicators | Low-liquidity stock with sparse trading | Warn user that technical analysis is less reliable for illiquid stocks |
-| Provider error or timeout | API rate limits or downtime | Retry after a short wait; check provider status |
+- **Low-liquidity stocks** (KASE, small Russian tickers): technical indicators are less reliable. Wider spreads and thin volume distort signals. State this caveat.
+- **Recently IPO'd stocks**: not enough history for 200-day EMA. Note which indicators are unavailable.
+- **Crypto/ETFs**: `run_technical_analysis` works on any ticker Yahoo Finance supports.
+- **Russian tickers**: prices come from MOEX provider. Technicals should work but with MOEX trading hours context.
