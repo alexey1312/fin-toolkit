@@ -173,6 +173,11 @@ def _serve() -> None:
         search=search_router,
     )
 
+    # Build watchlist store
+    from fin_toolkit.watchlist import WatchlistStore
+
+    watchlist_store = WatchlistStore()
+
     # Initialize and run
     server = init_server(
         provider_router=provider_router,
@@ -180,6 +185,7 @@ def _serve() -> None:
         technical_analyzer=technical,
         fundamental_analyzer=fundamental,
         agent_registry=agent_registry,
+        watchlist_store=watchlist_store,
     )
     server.run()
 

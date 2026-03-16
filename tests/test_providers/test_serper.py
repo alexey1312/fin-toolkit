@@ -9,7 +9,6 @@ import httpx
 import pytest
 
 from fin_toolkit.exceptions import ProviderConfigError, ProviderUnavailableError
-from fin_toolkit.models.results import SearchResult
 from fin_toolkit.providers.search_protocol import SearchProvider
 from fin_toolkit.providers.serper import SerperSearchProvider
 

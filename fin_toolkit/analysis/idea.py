@@ -159,7 +159,9 @@ _CATALYST_KEYWORDS: dict[str, tuple[list[str], str]] = {
     "restructuring": (
         [
             "restructuring", "spin-off", "spinoff", "divestiture",
+            "layoff", "job cut", "workforce reduction",
             "реструктуризация", "выделение", "разделение",
+            "сокращение", "увольнение",
         ],
         "neutral",
     ),
@@ -172,8 +174,35 @@ _CATALYST_KEYWORDS: dict[str, tuple[list[str], str]] = {
     ),
     "strategic": (
         [
-            "partnership", "joint venture", "strategic alliance", "contract",
+            "partnership", "joint venture", "strategic alliance",
+            "contract", "deal", "supply deal", "chip deal",
+            "infrastructure", "capex", "capital expenditure",
             "партнёрство", "совместное предприятие", "контракт",
+            "инвестиции", "инфраструктура",
+        ],
+        "positive",
+    ),
+    "growth": (
+        [
+            "revenue growth", "earnings beat", "revenue beat",
+            "record revenue", "profit surge", "raised guidance",
+            "рост выручки", "рекордная прибыль",
+        ],
+        "positive",
+    ),
+    "innovation": (
+        [
+            "ai chip", "new product", "launch", "patent",
+            "artificial intelligence", "ai model", "ai infrastructure",
+            "новый продукт", "запуск", "патент", "нейросеть",
+        ],
+        "positive",
+    ),
+    "dividend": (
+        [
+            "dividend increase", "special dividend",
+            "dividend initiat", "first dividend",
+            "повышение дивиденд", "специальный дивиденд",
         ],
         "positive",
     ),

@@ -53,12 +53,21 @@ def _make_idea_result() -> InvestmentIdeaResult:
         taxes=187_500, fcf=562_500, shares_outstanding=100_000, fcf_per_share=5.625,
     )
     scenarios = [
-        ScenarioValuation(label="bull", forward_ebitda=1_300_000, forward_eps=None,
-                          target_ev_ebitda=8.0, target_pe=None, target_price=150.0, upside_pct=50.0),
-        ScenarioValuation(label="base", forward_ebitda=1_100_000, forward_eps=None,
-                          target_ev_ebitda=8.0, target_pe=None, target_price=120.0, upside_pct=20.0),
-        ScenarioValuation(label="bear", forward_ebitda=900_000, forward_eps=None,
-                          target_ev_ebitda=8.0, target_pe=None, target_price=90.0, upside_pct=-10.0),
+        ScenarioValuation(
+            label="bull", forward_ebitda=1_300_000, forward_eps=None,
+            target_ev_ebitda=8.0, target_pe=None,
+            target_price=150.0, upside_pct=50.0,
+        ),
+        ScenarioValuation(
+            label="base", forward_ebitda=1_100_000, forward_eps=None,
+            target_ev_ebitda=8.0, target_pe=None,
+            target_price=120.0, upside_pct=20.0,
+        ),
+        ScenarioValuation(
+            label="bear", forward_ebitda=900_000, forward_eps=None,
+            target_ev_ebitda=8.0, target_pe=None,
+            target_price=90.0, upside_pct=-10.0,
+        ),
     ]
     catalysts = [
         CatalystItem(category="m_and_a", description="Potential acquisition",

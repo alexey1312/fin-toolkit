@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,6 +21,7 @@ from fin_toolkit.models.results import (
     SearchResult,
     TechnicalResult,
 )
+from fin_toolkit.watchlist import WatchlistStore
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -923,3 +925,360 @@ class TestParseReport:
 
         parsed = json.loads(result)
         assert parsed["ticker"] == "TEST"
+
+
+# ---------------------------------------------------------------------------
+# screen_stocks with filters
+# ---------------------------------------------------------------------------
+
+
+class TestScreenStocksWithFilters:
+    async def test_filter_excludes_tickers(self) -> None:
+        """Tickers not matching filters are excluded."""
+        from fin_toolkit.mcp_server.server import screen_stocks
+
+        # AAPL has pe=20 (fails <15), MSFT has pe=10 (passes)
+        metrics_aapl = KeyMetrics(
+            ticker="AAPL", pe_ratio=20.0, pb_ratio=3.0, market_cap=1e9,
+            dividend_yield=0.01, roe=0.15, roa=0.08, debt_to_equity=0.5,
+        )
+        metrics_msft = KeyMetrics(
+            ticker="MSFT", pe_ratio=10.0, pb_ratio=2.0, market_cap=2e9,
+            dividend_yield=0.02, roe=0.20, roa=0.10, debt_to_equity=0.3,
+        )
+        mock_router = AsyncMock()
+        mock_router.get_metrics.side_effect = [metrics_aapl, metrics_msft]
+        mock_reg = _mock_registry_with_agents({"b": _make_agent_result()})
+
+        with (
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+        ):
+            result = await screen_stocks(
+                tickers=["AAPL", "MSFT"],
+                filters={"pe_ratio": "<15"},
+                format="json",
+            )
+
+        parsed = json.loads(result)
+        assert parsed["total_scanned"] == 2
+        assert len(parsed["candidates"]) == 1
+        assert parsed["candidates"][0]["ticker"] == "MSFT"
+        assert parsed["filters_applied"] == {"pe_ratio": "<15"}
+
+    async def test_no_filters_returns_all(self) -> None:
+        """Without filters, all tickers pass."""
+        from fin_toolkit.mcp_server.server import screen_stocks
+
+        mock_router = AsyncMock()
+        mock_router.get_metrics.return_value = _make_metrics()
+        mock_reg = _mock_registry_with_agents({"b": _make_agent_result()})
+
+        with (
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+        ):
+            result = await screen_stocks(
+                tickers=["AAPL"], format="json",
+            )
+
+        parsed = json.loads(result)
+        assert len(parsed["candidates"]) == 1
+        assert parsed["filters_applied"] is None
+
+
+# ---------------------------------------------------------------------------
+# deep_dive
+# ---------------------------------------------------------------------------
+
+
+class TestDeepDive:
+    async def test_single_ticker_happy_path(self) -> None:
+        from fin_toolkit.mcp_server.server import deep_dive
+
+        agents = {"buffett": _make_agent_result()}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        mock_router.get_prices.return_value = _make_price_data("AAPL", 300)
+        mock_router.get_financials.return_value = _make_financials()
+        mock_router.get_metrics.return_value = _make_metrics()
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+        mock_fund = MagicMock()
+        mock_fund.analyze.return_value = _make_fundamental_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+            patch("fin_toolkit.mcp_server.server._fundamental_analyzer", mock_fund),
+            patch("fin_toolkit.mcp_server.server._search_router", None),
+        ):
+            result = await deep_dive(["AAPL"], format="json")
+
+        parsed = json.loads(result)
+        assert "AAPL" in parsed["items"]
+        item = parsed["items"]["AAPL"]
+        assert item["ticker"] == "AAPL"
+        assert item["fundamentals"] is not None
+        assert item["technical"] is not None
+        assert item["consensus"] is not None
+
+    async def test_too_many_tickers_error(self) -> None:
+        from fin_toolkit.mcp_server.server import deep_dive
+
+        mock_router = AsyncMock()
+        mock_analyzer = MagicMock()
+        mock_fund = MagicMock()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+            patch("fin_toolkit.mcp_server.server._fundamental_analyzer", mock_fund),
+        ):
+            result = await deep_dive([f"T{i}" for i in range(11)], format="json")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+        assert "10" in parsed["error"]
+
+    async def test_partial_failure(self) -> None:
+        from fin_toolkit.mcp_server.server import deep_dive
+
+        agents = {"buffett": _make_agent_result()}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        # First ticker succeeds, second fails on prices
+        mock_router.get_prices.side_effect = [
+            _make_price_data("AAPL", 300),
+            AllProvidersFailedError({"yahoo": "timeout"}),
+        ]
+        mock_router.get_financials.return_value = _make_financials()
+        mock_router.get_metrics.return_value = _make_metrics()
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+        mock_fund = MagicMock()
+        mock_fund.analyze.return_value = _make_fundamental_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+            patch("fin_toolkit.mcp_server.server._fundamental_analyzer", mock_fund),
+            patch("fin_toolkit.mcp_server.server._search_router", None),
+        ):
+            result = await deep_dive(["AAPL", "BAD"], format="json")
+
+        parsed = json.loads(result)
+        assert "AAPL" in parsed["items"]
+        # BAD partially succeeds (financials/metrics OK) but prices fail
+        # → warnings are at item level, not batch level
+        assert "BAD" in parsed["items"]
+        assert len(parsed["items"]["BAD"]["warnings"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# compare_stocks
+# ---------------------------------------------------------------------------
+
+
+class TestCompareStocks:
+    async def test_two_tickers_happy_path(self) -> None:
+        from fin_toolkit.mcp_server.server import compare_stocks
+
+        agents = {"buffett": _make_agent_result()}
+        mock_reg = _mock_registry_with_agents(agents)
+        mock_router = AsyncMock()
+        mock_router.get_metrics.return_value = _make_metrics()
+        mock_router.get_prices.return_value = _make_price_data("AAPL", 300)
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._agent_registry", mock_reg),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+        ):
+            result = await compare_stocks(["AAPL", "MSFT"], format="json")
+
+        parsed = json.loads(result)
+        assert "AAPL" in parsed["tickers"]
+        assert "MSFT" in parsed["tickers"]
+        assert "pe_ratio" in parsed["matrix"]
+
+    async def test_too_few_error(self) -> None:
+        from fin_toolkit.mcp_server.server import compare_stocks
+
+        mock_router = AsyncMock()
+        with patch("fin_toolkit.mcp_server.server._provider_router", mock_router):
+            result = await compare_stocks(["AAPL"], format="json")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+
+    async def test_too_many_error(self) -> None:
+        from fin_toolkit.mcp_server.server import compare_stocks
+
+        mock_router = AsyncMock()
+        with patch("fin_toolkit.mcp_server.server._provider_router", mock_router):
+            result = await compare_stocks([f"T{i}" for i in range(11)], format="json")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+
+
+# ---------------------------------------------------------------------------
+# manage_watchlist / set_alert / check_watchlist
+# ---------------------------------------------------------------------------
+
+
+class TestManageWatchlist:
+    async def test_add_ticker(self, tmp_path: Path) -> None:
+        from fin_toolkit.mcp_server.server import manage_watchlist
+
+        store = WatchlistStore(path=tmp_path / "w.yaml")
+        with patch("fin_toolkit.mcp_server.server._watchlist_store", store):
+            result = await manage_watchlist(
+                action="add", ticker="AAPL", format="json",
+            )
+
+        parsed = json.loads(result)
+        assert parsed["status"] == "ok"
+        assert parsed["ticker"] == "AAPL"
+
+    async def test_list_watchlists(self, tmp_path: Path) -> None:
+        from fin_toolkit.mcp_server.server import manage_watchlist
+
+        store = WatchlistStore(path=tmp_path / "w.yaml")
+        # Add a ticker first
+        from fin_toolkit.analysis.alerts import WatchlistEntry
+        store.add_ticker("default", WatchlistEntry(ticker="AAPL", added_at="2024-01-01"))
+
+        with patch("fin_toolkit.mcp_server.server._watchlist_store", store):
+            result = await manage_watchlist(action="list", format="json")
+
+        parsed = json.loads(result)
+        assert len(parsed["watchlists"]) == 1
+        assert parsed["watchlists"][0]["name"] == "default"
+
+    async def test_show_watchlist(self, tmp_path: Path) -> None:
+        from fin_toolkit.mcp_server.server import manage_watchlist
+
+        store = WatchlistStore(path=tmp_path / "w.yaml")
+        from fin_toolkit.analysis.alerts import WatchlistEntry
+        store.add_ticker("default", WatchlistEntry(ticker="AAPL", added_at="2024-01-01"))
+
+        with patch("fin_toolkit.mcp_server.server._watchlist_store", store):
+            result = await manage_watchlist(action="show", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["watchlist"] == "default"
+        assert len(parsed["entries"]) == 1
+
+    async def test_remove_ticker(self, tmp_path: Path) -> None:
+        from fin_toolkit.mcp_server.server import manage_watchlist
+
+        store = WatchlistStore(path=tmp_path / "w.yaml")
+        from fin_toolkit.analysis.alerts import WatchlistEntry
+        store.add_ticker("default", WatchlistEntry(ticker="AAPL", added_at="2024-01-01"))
+
+        with patch("fin_toolkit.mcp_server.server._watchlist_store", store):
+            result = await manage_watchlist(
+                action="remove", ticker="AAPL", format="json",
+            )
+
+        parsed = json.loads(result)
+        assert parsed["status"] == "ok"
+
+    async def test_no_store_error(self) -> None:
+        from fin_toolkit.mcp_server.server import manage_watchlist
+
+        with patch("fin_toolkit.mcp_server.server._watchlist_store", None):
+            result = await manage_watchlist(action="list", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+
+    async def test_add_no_ticker_error(self, tmp_path: Path) -> None:
+        from fin_toolkit.mcp_server.server import manage_watchlist
+
+        store = WatchlistStore(path=tmp_path / "w.yaml")
+        with patch("fin_toolkit.mcp_server.server._watchlist_store", store):
+            result = await manage_watchlist(action="add", format="json")
+
+        parsed = json.loads(result)
+        assert parsed["is_error"] is True
+
+
+class TestSetAlert:
+    async def test_set_alert_ok(self, tmp_path: Path) -> None:
+        from fin_toolkit.mcp_server.server import set_alert
+
+        store = WatchlistStore(path=tmp_path / "w.yaml")
+        from fin_toolkit.analysis.alerts import WatchlistEntry
+        store.add_ticker("default", WatchlistEntry(ticker="AAPL", added_at="2024-01-01"))
+
+        with patch("fin_toolkit.mcp_server.server._watchlist_store", store):
+            result = await set_alert(
+                watchlist="default", ticker="AAPL",
+                metric="pe_ratio", operator=">", threshold=25.0,
+                format="json",
+            )
+
+        parsed = json.loads(result)
+        assert parsed["status"] == "ok"
+        assert parsed["metric"] == "pe_ratio"
+
+
+class TestCheckWatchlist:
+    async def test_check_with_triggered_alert(self, tmp_path: Path) -> None:
+        from fin_toolkit.mcp_server.server import check_watchlist
+
+        store = WatchlistStore(path=tmp_path / "w.yaml")
+        from fin_toolkit.analysis.alerts import AlertRule, WatchlistEntry
+        entry = WatchlistEntry(
+            ticker="AAPL", added_at="2024-01-01",
+            alerts=[AlertRule(metric="pe_ratio", operator=">", threshold=15.0, label="High P/E")],
+        )
+        store.add_ticker("default", entry)
+
+        mock_router = AsyncMock()
+        mock_router.get_metrics.return_value = _make_metrics()  # pe=20
+        mock_router.get_prices.return_value = _make_price_data("AAPL", 300)
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._watchlist_store", store),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+        ):
+            result = await check_watchlist(format="json")
+
+        parsed = json.loads(result)
+        assert parsed["watchlist_name"] == "default"
+        assert len(parsed["alerts_triggered"]) == 1
+        assert parsed["alerts_triggered"][0]["metric"] == "pe_ratio"
+
+    async def test_check_no_alerts_empty(self, tmp_path: Path) -> None:
+        from fin_toolkit.mcp_server.server import check_watchlist
+
+        store = WatchlistStore(path=tmp_path / "w.yaml")
+        from fin_toolkit.analysis.alerts import WatchlistEntry
+        store.add_ticker("default", WatchlistEntry(ticker="AAPL", added_at="2024-01-01"))
+
+        mock_router = AsyncMock()
+        mock_router.get_metrics.return_value = _make_metrics()
+        mock_router.get_prices.return_value = _make_price_data("AAPL", 300)
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = _make_technical_result()
+
+        with (
+            patch("fin_toolkit.mcp_server.server._watchlist_store", store),
+            patch("fin_toolkit.mcp_server.server._provider_router", mock_router),
+            patch("fin_toolkit.mcp_server.server._technical_analyzer", mock_analyzer),
+        ):
+            result = await check_watchlist(format="json")
+
+        parsed = json.loads(result)
+        assert parsed["alerts_triggered"] == []

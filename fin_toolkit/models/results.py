@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from fin_toolkit.models.financial import KeyMetrics
+
 
 class TechnicalResult(BaseModel):
     """Result of technical analysis."""
@@ -193,4 +195,85 @@ class ScreeningResult(BaseModel):
     market: str | None
     total_scanned: int
     candidates: list[ScreeningCandidate]
+    filters_applied: dict[str, str] | None = None
     warnings: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Deep dive models
+# ---------------------------------------------------------------------------
+
+
+class DeepDiveItem(BaseModel):
+    """Deep dive analysis for a single ticker."""
+
+    ticker: str
+    fundamentals: FundamentalResult | None
+    technical: TechnicalResult | None
+    risk: RiskResult | None
+    consensus: ConsensusResult | None
+    news: list[SearchResult]
+    warnings: list[str]
+
+
+class DeepDiveResult(BaseModel):
+    """Batch deep dive result for multiple tickers."""
+
+    items: dict[str, DeepDiveItem]
+    warnings: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Comparison models
+# ---------------------------------------------------------------------------
+
+
+class ComparisonInput(BaseModel):
+    """Input data for comparing a single ticker."""
+
+    ticker: str
+    key_metrics: KeyMetrics | None = None
+    risk: RiskResult | None = None
+    consensus: ConsensusResult | None = None
+
+
+class ComparisonResult(BaseModel):
+    """Result of stock comparison across multiple tickers."""
+
+    tickers: list[str]
+    metrics: list[str]
+    matrix: dict[str, dict[str, float | str | None]]  # metric -> {ticker -> value}
+    warnings: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Watchlist & alert models
+# ---------------------------------------------------------------------------
+
+
+class AlertTriggered(BaseModel):
+    """A triggered alert condition."""
+
+    ticker: str
+    metric: str
+    operator: str
+    threshold: float
+    current_value: float
+    label: str | None
+
+
+class WatchlistCheckResult(BaseModel):
+    """Result of checking a watchlist for triggered alerts."""
+
+    watchlist_name: str
+    tickers: list[str]
+    alerts_triggered: list[AlertTriggered]
+    warnings: list[str]
+
+
+class WatchlistInfo(BaseModel):
+    """Summary of a watchlist."""
+
+    name: str
+    tickers: list[str]
+    alert_count: int

@@ -53,7 +53,8 @@ New providers/agents implement the protocol; no base class inheritance needed.
 
 ### MCP server wiring
 
-`mcp_server/server.py` uses module-level globals initialized by `init_server()`. The CLI (`cli.py`) builds all dependencies (providers, analyzers, registry) and passes them to `init_server()` before calling `server.run()`.
+`mcp_server/server.py` uses module-level globals initialized by `init_server()`. The CLI (`cli.py`) builds all dependencies (providers, analyzers, registry, watchlist store) and passes them to `init_server()` before calling `server.run()`.
+- `init_server()` accepts optional `watchlist_store: WatchlistStore | None` — `cli.py` creates `WatchlistStore()` and passes it
 
 All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON saves 30-60% tokens on tabular data. Errors always return JSON. Serialization logic in `mcp_server/serialize.py`.
 
@@ -80,7 +81,7 @@ All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON s
 
 ### Exception hierarchy
 
-All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `TickerNotFoundError`, `ProviderUnavailableError`, `AllProvidersFailedError`, `InsufficientDataError`, `AgentNotFoundError`.
+All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `TickerNotFoundError`, `ProviderUnavailableError`, `AllProvidersFailedError`, `InsufficientDataError`, `AgentNotFoundError`, `InvalidFilterError`, `WatchlistError`.
 
 ### Config resolution
 
@@ -94,6 +95,8 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Key-based: `GEMINI_API_KEY`, `PERPLEXITY_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY`, `SERPER_API_KEY`, `EXA_API_KEY`
 - Google: uses Gemini API with Search Grounding; model configurable via `search.gemini_model` (default: `gemini-3.1-flash-lite`)
 - DuckDuckGo: always available, no API key (uses `ddgs` package, NOT `duckduckgo-search`)
+- Uses `ddgs.news()` (not `ddgs.text()`) for articles with dates; falls back to `text()` if news fails/empty
+- `ddgs.news()` may raise `DDGSException` on complex queries — catch inside provider, not at caller level
 - SearXNG: self-hosted via Docker, `search.searxng_url` in config (default `http://localhost:8888`)
 - New search provider: implement `SearchProvider` protocol (~50 LOC), add to `config/models.py` + `cli.py`
 - Google search provider has extra `model` param — wired separately from generic key-based loop in `cli.py`
@@ -150,10 +153,29 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 ### Investment idea & screening layer
 
 - `analysis/idea.py` — pure functions (no async/IO): `compute_cagr`, `compute_fcf_waterfall`, `compute_scenarios`, `classify_catalysts`, `detect_risks`
-- `analysis/screening.py` — `compute_quick_score(metrics)`: 0-100 from P/E, P/B, EV/EBITDA, FCF yield, D/E, div yield, ROE
-- `report/html_report.py` — self-contained HTML with Plotly charts (CDN), dark theme, 11 sections
-- MCP tools: `generate_investment_idea` (html/json/toon), `screen_stocks` (two-stage: quick_score → consensus), `parse_report`
+- `analysis/screening.py` — `compute_quick_score(metrics)`: 0-100 from P/E, P/B, EV/EBITDA, FCF yield, D/E, div yield, ROE; `parse_filter(expr)` + `matches_filters(metrics, filters)` for custom screener filters (operators: `<`, `>`, `<=`, `>=`, `=`, `min..max`)
+- `report/html_report.py` — self-contained HTML with Plotly charts (CDN), dark theme, 13 sections with EN/RU toggle (JS-based, zero reload)
+- `report/i18n.py` — `LangPair` dataclass, `HEADERS`/`SIGNALS`/`METRIC_LABELS`/`DISCLAIMER` dicts, `i18n_span()` for HTML, `currency_symbol(ticker)` (₽/₸/$), `fmt_price()`
+- `report/narrative.py` — template-based (no LLM) thesis/FCF/target narratives: `generate_thesis()`, `generate_fcf_narrative()`, `generate_target_summary()` → `LangPair`
+- MCP tools: `generate_investment_idea` (html/json/toon), `screen_stocks` (two-stage + optional `filters` param), `parse_report`
 - `generate_investment_idea` default format is `"html"` (not `"toon"`) — opens browser via `webbrowser.open()`
+- Catalyst search: use broad query `"{ticker} stock news {year}"` with max_results=10, NOT narrow `"acquisition buyback"` — narrow queries return other tickers' results
+- `classify_catalysts()` keyword categories: m_and_a, buyback, restructuring (incl. layoffs), index, strategic (incl. deals/capex/infrastructure), growth, innovation (incl. AI), dividend
+- `_fmt_large()` in `html_report.py` hardcodes `$` prefix — should use `currency_symbol(ticker)` for RU/KZ tickers (known tech debt)
+
+### Watchlist & alerts
+
+- `watchlist.py` — `WatchlistStore` class: YAML-backed persistent storage at `~/.config/fin-toolkit/watchlists.yaml`
+- `analysis/alerts.py` — `AlertRule` and `WatchlistEntry` dataclasses + `evaluate_alerts()` pure function
+- Alert metrics routed to source: KeyMetrics (pe_ratio, roe, etc.), RiskResult (volatility_30d, var_95), TechnicalResult (rsi, ema_20)
+- MCP tools: `manage_watchlist` (add/remove/list/show), `set_alert`, `check_watchlist`
+
+### Deep dive & comparison
+
+- `deep_dive` MCP tool: batch analysis for 1-10 tickers, concurrent fetch per ticker via `_deep_dive_single()`, partial failures → item-level warnings
+- `analysis/comparison.py` — `build_comparison_matrix(ticker_data, metrics)`: builds `{metric: {ticker: value}}` matrix from `ComparisonInput`
+- `compare_stocks` MCP tool: 2-10 tickers, fetches metrics/risk/consensus concurrently, delegates to `build_comparison_matrix()`
+- New models in `results.py`: `DeepDiveItem/Result`, `ComparisonInput/Result`, `AlertTriggered`, `WatchlistCheckResult`, `WatchlistInfo`, `ScreeningResult.filters_applied`
 
 ### KASE provider
 
@@ -179,6 +201,9 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - MOEX tests: patch `aiomoex` module AND `aiohttp.ClientSession` context manager
 - EDGAR tests: use `SimpleNamespace` (not MagicMock) for XBRL objects — `float(MagicMock())` silently returns 1.0
 - EDGAR tests: patch `"edgar.Company"` with `create=True` (lazy import inside static method)
+- Watchlist tests use `tmp_path` fixture for isolated YAML storage — `WatchlistStore(path=tmp_path / "w.yaml")`
+- `deep_dive` partial failures: price/financials/metrics fail independently → warnings in `DeepDiveItem.warnings`, NOT batch-level `DeepDiveResult.warnings`
+- Comparison/alerts are pure functions — tested without mocks, same as portfolio functions
 
 ## Code style
 

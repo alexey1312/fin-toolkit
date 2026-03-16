@@ -9,7 +9,6 @@ import pytest
 from fin_toolkit.exceptions import TickerNotFoundError
 from fin_toolkit.providers.smartlab import SmartLabProvider, _parse_fundamental_table, _parse_number
 
-
 # ---------------------------------------------------------------------------
 # _parse_number
 # ---------------------------------------------------------------------------

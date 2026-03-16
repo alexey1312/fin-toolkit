@@ -70,3 +70,21 @@ class ConfigError(FinToolkitError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+
+class InvalidFilterError(FinToolkitError):
+    """Raised when a screener filter expression is malformed."""
+
+    def __init__(self, expression: str, reason: str = "") -> None:
+        self.expression = expression
+        msg = f"Invalid filter: '{expression}'"
+        if reason:
+            msg += f" ({reason})"
+        super().__init__(msg)
+
+
+class WatchlistError(FinToolkitError):
+    """Raised for watchlist-specific errors."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

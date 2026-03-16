@@ -44,6 +44,10 @@ All MCP tools work out of the box — no API keys required (Yahoo Finance + Duck
 │  │_analysis     │ │              │ │investment_   │ │report     │ │
 │  │              │ │              │ │idea          │ │           │ │
 │  └──────────────┘ └──────────────┘ └──────────────┘ └───────────┘ │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌───────────┐ │
+│  │deep_dive     │ │compare_      │ │manage_       │ │check_     │ │
+│  │              │ │stocks        │ │watchlist     │ │watchlist  │ │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └───────────┘ │
 │                             │                                       │
 │  ┌──────────────────────────┴──────────────────────────────────┐   │
 │  │                    Routing Layer                              │   │
@@ -183,7 +187,10 @@ Screen stocks by valuation score with optional consensus on top candidates.
 tickers: ["AAPL", "MSFT", "GOOGL"]  # or use market
 market: "moex"                        # auto-fetch tickers (moex, kase)
 top_n: 10
+filters: {"pe_ratio": "<15", "roe": ">0.10"}  # optional metric filters
 ```
+
+Supported filter operators: `<`, `>`, `<=`, `>=`, `=`, `min..max` (range).
 
 ### generate_investment_idea
 
@@ -207,6 +214,62 @@ ticker: "AAPL"
 ```
 
 Works with English and Russian (IFRS/МСФО) reports.
+
+### deep_dive
+
+Batch deep dive on multiple tickers (max 10). Fetches prices, financials, metrics, consensus, and news concurrently per ticker.
+
+```
+tickers: ["AAPL", "MSFT", "INTC"]
+period: "1y"
+```
+
+Returns: per-ticker fundamentals, technical, risk, consensus, news. Partial failures → warnings per ticker.
+
+### compare_stocks
+
+Compare 2-10 stocks side by side on key metrics.
+
+```
+tickers: ["AAPL", "MSFT"]
+metrics: ["pe_ratio", "roe", "consensus_score"]  # optional, defaults to standard set
+```
+
+Returns: comparison matrix `{metric: {ticker: value}}`.
+
+### manage_watchlist
+
+Manage persistent watchlists (YAML-backed at `~/.config/fin-toolkit/watchlists.yaml`).
+
+```
+action: "add"       # add, remove, list, show
+watchlist: "default"
+ticker: "AAPL"
+notes: "Core holding"
+```
+
+### set_alert
+
+Set an alert on a ticker in a watchlist.
+
+```
+watchlist: "default"
+ticker: "AAPL"
+metric: "pe_ratio"    # pe_ratio, roe, rsi, volatility_30d, etc.
+operator: ">"
+threshold: 25
+label: "High P/E warning"
+```
+
+### check_watchlist
+
+Check a watchlist for triggered alerts. Fetches current data and evaluates all configured alerts.
+
+```
+watchlist: "default"
+```
+
+Returns: list of triggered alerts with current values.
 
 ## Analysis Agents
 
@@ -275,8 +338,10 @@ fin-toolkit/
     fundamental.py    #   Profitability, valuation, stability ratios
     risk.py           #   Volatility, VaR, correlation
     portfolio.py      #   Consensus, position sizing, stop-loss
-    screening.py      #   Quick valuation scoring
+    screening.py      #   Quick valuation scoring + custom filters
     idea.py           #   Investment idea: scenarios, catalysts, FCF
+    comparison.py     #   Stock comparison matrix
+    alerts.py         #   Alert evaluation + AlertRule/WatchlistEntry dataclasses
   agents/             # Analysis agents (protocol + implementations)
     protocol.py       #   AnalysisAgent protocol (analyze -> AgentResult)
     elvis.py          #   Elvis Marlamov
@@ -294,10 +359,13 @@ fin-toolkit/
     models.py         #   ToolkitConfig, DataConfig, SearchConfig, etc.
     loader.py         #   YAML + env + defaults loader
   mcp_server/         # FastMCP server
-    server.py         #   MCP tools (12 tools)
+    server.py         #   MCP tools (18 tools)
     serialize.py      #   TOON/JSON serialization
   report/             # Report generation
-    html_report.py    #   Interactive HTML reports with Plotly charts
+    html_report.py    #   Interactive HTML reports with Plotly charts (13 sections, EN/RU toggle)
+    i18n.py           #   Bilingual translations, currency helpers
+    narrative.py      #   Template-based thesis/FCF/target narratives
+  watchlist.py        # YAML-backed persistent watchlist store
   cli.py              # CLI entry point (serve, setup, status)
 ```
 

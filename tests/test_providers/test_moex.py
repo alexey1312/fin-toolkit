@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from fin_toolkit.exceptions import ProviderUnavailableError, TickerNotFoundError
+from fin_toolkit.exceptions import TickerNotFoundError
 from fin_toolkit.providers.moex import MOEXProvider
 
 

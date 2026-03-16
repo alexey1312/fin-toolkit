@@ -29,17 +29,23 @@ from fin_toolkit.exceptions import FinToolkitError
 from fin_toolkit.mcp_server.serialize import serialize
 from fin_toolkit.models.price_data import PriceData
 from fin_toolkit.models.results import (
+    ComparisonInput,
     ConsensusResult,
     CorrelationResult,
+    DeepDiveItem,
+    DeepDiveResult,
     InvestmentIdeaResult,
     PortfolioResult,
     RecommendationResult,
     RiskResult,
     ScreeningCandidate,
     ScreeningResult,
+    WatchlistCheckResult,
+    WatchlistInfo,
 )
 from fin_toolkit.providers.router import ProviderRouter
 from fin_toolkit.providers.search_router import SearchRouter
+from fin_toolkit.watchlist import WatchlistStore
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +58,7 @@ _search_router: SearchRouter | None = None
 _technical_analyzer: TechnicalAnalyzer | None = None
 _fundamental_analyzer: FundamentalAnalyzer | None = None
 _agent_registry: AgentRegistry | None = None
+_watchlist_store: WatchlistStore | None = None
 
 mcp = FastMCP("fin-toolkit")
 
@@ -100,16 +107,19 @@ def init_server(
     technical_analyzer: TechnicalAnalyzer,
     fundamental_analyzer: FundamentalAnalyzer,
     agent_registry: AgentRegistry,
+    watchlist_store: WatchlistStore | None = None,
 ) -> FastMCP:
     """Initialize shared state and return the MCP server instance."""
     global _provider_router, _search_router  # noqa: PLW0603
     global _technical_analyzer, _fundamental_analyzer, _agent_registry  # noqa: PLW0603
+    global _watchlist_store  # noqa: PLW0603
 
     _provider_router = provider_router
     _search_router = search_router
     _technical_analyzer = technical_analyzer
     _fundamental_analyzer = fundamental_analyzer
     _agent_registry = agent_registry
+    _watchlist_store = watchlist_store
 
     return mcp
 
@@ -573,6 +583,7 @@ async def screen_stocks(
     tickers: list[str] | None = None,
     market: str | None = None,
     top_n: int = 10,
+    filters: dict[str, str] | None = None,
     format: str = "toon",
 ) -> str:
     """Screen stocks by quick valuation score and optionally run consensus on top candidates.
@@ -589,12 +600,17 @@ async def screen_stocks(
         market: Market to auto-fetch tickers ("moex" or "kase"). MOEX auto-fetches
             all TQBR tickers but metrics will be limited (prices/market cap only).
         top_n: How many top candidates to run full consensus on.
+        filters: Optional metric filters, e.g. {"pe_ratio": "<15", "roe": ">0.10"}.
+            Supported operators: <, >, <=, >=, =, min..max (range).
         format: Response format - "toon" (default, token-efficient) or "json".
     """
     try:
         assert _provider_router is not None
 
-        from fin_toolkit.analysis.screening import compute_quick_score
+        from fin_toolkit.analysis.screening import (
+            compute_quick_score,
+            matches_filters,
+        )
 
         # Resolve ticker list
         ticker_list = tickers or []
@@ -603,12 +619,16 @@ async def screen_stocks(
         if not ticker_list:
             return _error_response("Provide tickers or market name")
 
-        # Stage 1: quick score
+        active_filters = filters or {}
+
+        # Stage 1: quick score + filter
         scored: list[tuple[str, float, dict[str, float | None]]] = []
         warnings: list[str] = []
         for ticker in ticker_list:
             try:
                 metrics = await _provider_router.get_metrics(ticker)
+                if active_filters and not matches_filters(metrics, active_filters):
+                    continue
                 qs = compute_quick_score(metrics)
                 key_m: dict[str, float | None] = {
                     "pe_ratio": metrics.pe_ratio,
@@ -648,6 +668,7 @@ async def screen_stocks(
             market=market,
             total_scanned=len(ticker_list),
             candidates=candidates,
+            filters_applied=active_filters or None,
             warnings=warnings,
         )
         return serialize(result.model_dump(), format)
@@ -730,13 +751,16 @@ async def generate_investment_idea(
         # Step 2: search for catalysts/risks
         search_results_catalysts: list[Any] = []
         search_results_risks: list[Any] = []
+        year = datetime.now().year
         if _search_router is not None:
             try:
                 cat_task = _search_router.search(
-                    f"{ticker} acquisition merger buyback restructuring", max_results=5,
+                    f"{ticker} stock news {year}",
+                    max_results=10,
                 )
                 risk_task = _search_router.search(
-                    f"{ticker} sanctions investigation regulatory ESG", max_results=5,
+                    f"{ticker} risk lawsuit regulation {year}",
+                    max_results=5,
                 )
                 cat_r, risk_r = await asyncio.gather(cat_task, risk_task, return_exceptions=True)
                 if not isinstance(cat_r, BaseException):
@@ -911,23 +935,401 @@ def _render_html_idea(idea: InvestmentIdeaResult) -> str:
     webbrowser.open(f"file://{path}")
 
     # Return summary
+    from fin_toolkit.report.i18n import currency_symbol
+
+    sym = currency_symbol(idea.ticker)
     scenarios_summary = ""
     for s in idea.scenarios:
         if s.target_price is not None:
-            scenarios_summary += f"  {s.label}: ${s.target_price:,.2f}"
+            scenarios_summary += f"  {s.label}: {sym}{s.target_price:,.2f}"
             if s.upside_pct is not None:
                 scenarios_summary += f" ({s.upside_pct:+.1f}%)"
             scenarios_summary += "\n"
 
+    price_line = (
+        f"Price: {sym}{idea.current_price:,.2f}\n" if idea.current_price else ""
+    )
     return (
         f"Investment Idea: {idea.ticker}\n"
         f"Signal: {idea.consensus.consensus_signal} "
         f"({idea.consensus.consensus_score:.0f}/100)\n"
-        f"Price: ${idea.current_price:,.2f}\n" if idea.current_price else ""
+        f"{price_line}"
         f"Scenarios:\n{scenarios_summary}"
         f"Report saved: {path}\n"
         f"Opened in browser."
     )
+
+
+# ---------------------------------------------------------------------------
+# Deep Dive / Compare / Watchlist tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool
+async def deep_dive(
+    tickers: list[str],
+    period: str = "1y",
+    format: str = "toon",
+) -> str:
+    """Run a batch deep dive on multiple tickers (max 10).
+
+    For each ticker: fetches prices, financials, metrics, runs consensus and
+    news search concurrently. Partial failures produce warnings, never kill batch.
+
+    Args:
+        tickers: List of 1-10 stock ticker symbols.
+        period: Time period for price data.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        assert _provider_router is not None
+        assert _technical_analyzer is not None
+        assert _fundamental_analyzer is not None
+
+        if len(tickers) > 10:
+            return _error_response("Deep dive supports at most 10 tickers")
+
+        start, end = _period_to_dates(period)
+        items: dict[str, DeepDiveItem] = {}
+        batch_warnings: list[str] = []
+
+        for ticker in tickers:
+            w: list[str] = []
+            try:
+                item = await _deep_dive_single(ticker, start, end, w)
+                items[ticker] = item
+            except Exception as exc:
+                batch_warnings.append(f"{ticker}: {exc}")
+
+        if not items:
+            return _error_response(
+                "All tickers failed: " + "; ".join(batch_warnings)
+            )
+
+        result = DeepDiveResult(items=items, warnings=batch_warnings)
+        return serialize(result.model_dump(), format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in deep_dive")
+        return _error_response(f"Internal error: {exc}")
+
+
+async def _deep_dive_single(
+    ticker: str, start: str, end: str, warnings: list[str],
+) -> DeepDiveItem:
+    """Deep dive for a single ticker."""
+    assert _provider_router is not None
+    assert _technical_analyzer is not None
+    assert _fundamental_analyzer is not None
+
+    # Concurrent fetch
+    tasks: dict[str, Any] = {
+        "prices": _provider_router.get_prices(ticker, start, end),
+        "financials": _provider_router.get_financials(ticker),
+        "metrics": _provider_router.get_metrics(ticker),
+        "consensus": _run_consensus(ticker),
+    }
+    # Add news search if available
+    if _search_router is not None:
+        tasks["news"] = _search_router.search(
+            f"{ticker} stock latest news {datetime.now().year}",
+            max_results=5,
+        )
+
+    results_raw = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    fetched: dict[str, Any] = {}
+    for key, result in zip(tasks.keys(), results_raw, strict=True):
+        if isinstance(result, BaseException):
+            warnings.append(f"{ticker} {key}: {result}")
+            fetched[key] = None
+        else:
+            fetched[key] = result
+
+    # Derive technical/risk from prices
+    technical = None
+    risk_result = None
+    if fetched.get("prices") and fetched["prices"].prices:
+        technical = _technical_analyzer.analyze(fetched["prices"])
+        risk_result = _compute_risk(fetched["prices"])
+
+    # Fundamental from financials+metrics
+    fundamental = None
+    if fetched.get("financials") and fetched.get("metrics"):
+        fundamental = _fundamental_analyzer.analyze(
+            fetched["financials"], fetched["metrics"],
+        )
+
+    news_items = fetched.get("news") or []
+
+    return DeepDiveItem(
+        ticker=ticker,
+        fundamentals=fundamental,
+        technical=technical,
+        risk=risk_result,
+        consensus=fetched.get("consensus"),
+        news=news_items,
+        warnings=warnings,
+    )
+
+
+@mcp.tool
+async def compare_stocks(
+    tickers: list[str],
+    metrics: list[str] | None = None,
+    format: str = "toon",
+) -> str:
+    """Compare 2-10 stocks side by side on key metrics.
+
+    Fetches metrics, risk, and consensus for each ticker concurrently,
+    then builds a comparison matrix oriented as {metric: {ticker: value}}.
+
+    Args:
+        tickers: List of 2-10 stock ticker symbols.
+        metrics: Optional list of metrics to compare (default: standard set).
+            Available: pe_ratio, pb_ratio, ev_ebitda, fcf_yield, roe, roa,
+            debt_to_equity, dividend_yield, market_cap, current_price,
+            volatility_30d, consensus_score, consensus_signal.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        assert _provider_router is not None
+
+        if len(tickers) < 2:
+            return _error_response("Comparison requires at least 2 tickers")
+        if len(tickers) > 10:
+            return _error_response("Comparison supports at most 10 tickers")
+
+        from fin_toolkit.analysis.comparison import build_comparison_matrix
+
+        start, end = _period_to_dates("1y")
+        ticker_data: dict[str, ComparisonInput] = {}
+        warnings: list[str] = []
+
+        for ticker in tickers:
+            km = None
+            risk_r = None
+            cons = None
+            try:
+                km = await _provider_router.get_metrics(ticker)
+            except Exception as exc:
+                warnings.append(f"{ticker} metrics: {exc}")
+            try:
+                pd = await _provider_router.get_prices(ticker, start, end)
+                risk_r = _compute_risk(pd)
+            except Exception as exc:
+                warnings.append(f"{ticker} risk: {exc}")
+            try:
+                cons = await _run_consensus(ticker)
+            except Exception as exc:
+                warnings.append(f"{ticker} consensus: {exc}")
+
+            ticker_data[ticker] = ComparisonInput(
+                ticker=ticker, key_metrics=km, risk=risk_r, consensus=cons,
+            )
+
+        result = build_comparison_matrix(ticker_data, metrics)
+        out = result.model_dump()
+        out["warnings"] = result.warnings + warnings
+        return serialize(out, format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in compare_stocks")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
+async def manage_watchlist(
+    action: str,
+    watchlist: str = "default",
+    ticker: str | None = None,
+    notes: str | None = None,
+    format: str = "toon",
+) -> str:
+    """Manage watchlists: add/remove tickers, list or show watchlists.
+
+    Args:
+        action: "add", "remove", "list" (all watchlists), or "show" (one watchlist).
+        watchlist: Watchlist name (default: "default").
+        ticker: Ticker symbol (required for "add" and "remove").
+        notes: Optional notes when adding a ticker.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        if _watchlist_store is None:
+            return _error_response("Watchlist store not initialized")
+
+        from fin_toolkit.analysis.alerts import WatchlistEntry
+
+        if action == "add":
+            if not ticker:
+                return _error_response("Ticker required for 'add' action")
+            entry = WatchlistEntry(
+                ticker=ticker,
+                added_at=datetime.now().strftime("%Y-%m-%d"),
+                notes=notes,
+            )
+            _watchlist_store.add_ticker(watchlist, entry)
+            return serialize(
+                {"status": "ok", "action": "added", "ticker": ticker,
+                 "watchlist": watchlist}, format,
+            )
+
+        if action == "remove":
+            if not ticker:
+                return _error_response("Ticker required for 'remove' action")
+            _watchlist_store.remove_ticker(watchlist, ticker)
+            return serialize(
+                {"status": "ok", "action": "removed", "ticker": ticker,
+                 "watchlist": watchlist}, format,
+            )
+
+        if action == "list":
+            names = _watchlist_store.list_watchlists()
+            infos: list[dict[str, Any]] = []
+            for name in names:
+                entries = _watchlist_store.get_watchlist(name)
+                alert_count = sum(len(e.alerts) for e in entries)
+                infos.append(WatchlistInfo(
+                    name=name,
+                    tickers=[e.ticker for e in entries],
+                    alert_count=alert_count,
+                ).model_dump())
+            return serialize({"watchlists": infos}, format)
+
+        if action == "show":
+            entries = _watchlist_store.get_watchlist(watchlist)
+            data: list[dict[str, Any]] = []
+            for e in entries:
+                data.append({
+                    "ticker": e.ticker,
+                    "added_at": e.added_at,
+                    "notes": e.notes,
+                    "alert_count": len(e.alerts),
+                })
+            return serialize(
+                {"watchlist": watchlist, "entries": data}, format,
+            )
+
+        return _error_response(f"Unknown action: {action}")
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in manage_watchlist")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
+async def set_alert(
+    watchlist: str,
+    ticker: str,
+    metric: str,
+    operator: str,
+    threshold: float,
+    label: str | None = None,
+    format: str = "toon",
+) -> str:
+    """Set an alert on a ticker in a watchlist.
+
+    When check_watchlist is called, the alert fires if the condition is met.
+
+    Args:
+        watchlist: Watchlist name.
+        ticker: Ticker symbol (must already be in the watchlist).
+        metric: Metric to monitor (e.g. "pe_ratio", "rsi", "volatility_30d").
+        operator: Comparison operator: "<", ">", "<=", ">=", "=".
+        threshold: Threshold value for the alert.
+        label: Optional human-readable label for the alert.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        if _watchlist_store is None:
+            return _error_response("Watchlist store not initialized")
+
+        from fin_toolkit.analysis.alerts import AlertRule
+
+        rule = AlertRule(
+            metric=metric, operator=operator,
+            threshold=threshold, label=label,
+        )
+        _watchlist_store.set_alert(watchlist, ticker, rule)
+        return serialize(
+            {"status": "ok", "ticker": ticker, "metric": metric,
+             "operator": operator, "threshold": threshold}, format,
+        )
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in set_alert")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
+async def check_watchlist(
+    watchlist: str = "default",
+    format: str = "toon",
+) -> str:
+    """Check a watchlist for triggered alerts.
+
+    Fetches current metrics, risk, and technical data for each ticker
+    and evaluates all configured alerts.
+
+    Args:
+        watchlist: Watchlist name to check (default: "default").
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        if _watchlist_store is None:
+            return _error_response("Watchlist store not initialized")
+        assert _provider_router is not None
+
+        from fin_toolkit.analysis.alerts import evaluate_alerts
+
+        entries = _watchlist_store.get_watchlist(watchlist)
+        all_triggered: list[Any] = []
+        warnings: list[str] = []
+        start, end = _period_to_dates("6m")
+
+        for entry in entries:
+            km = None
+            risk_r = None
+            tech = None
+            try:
+                km = await _provider_router.get_metrics(entry.ticker)
+            except Exception as exc:
+                warnings.append(f"{entry.ticker} metrics: {exc}")
+            try:
+                pd = await _provider_router.get_prices(entry.ticker, start, end)
+                risk_r = _compute_risk(pd)
+                if _technical_analyzer:
+                    tech = _technical_analyzer.analyze(pd)
+            except Exception as exc:
+                warnings.append(f"{entry.ticker} prices: {exc}")
+
+            triggered = evaluate_alerts(entry, km, risk_r, tech)
+            all_triggered.extend(t.model_dump() for t in triggered)
+
+        result = WatchlistCheckResult(
+            watchlist_name=watchlist,
+            tickers=[e.ticker for e in entries],
+            alerts_triggered=[],  # filled from dicts below
+            warnings=warnings,
+        )
+        # Re-serialize via model_dump then add triggered
+        out = result.model_dump()
+        out["alerts_triggered"] = all_triggered
+        return serialize(out, format)
+    except FinToolkitError as exc:
+        return _error_response(str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error in check_watchlist")
+        return _error_response(f"Internal error: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Helpers for investment idea / screening
+# ---------------------------------------------------------------------------
 
 
 def _empty_technical() -> Any:

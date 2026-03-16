@@ -9,7 +9,6 @@ import httpx
 import pytest
 
 from fin_toolkit.exceptions import ProviderConfigError, ProviderUnavailableError
-from fin_toolkit.models.results import SearchResult
 from fin_toolkit.providers.exa import ExaSearchProvider
 from fin_toolkit.providers.search_protocol import SearchProvider
 

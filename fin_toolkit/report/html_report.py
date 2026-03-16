@@ -8,12 +8,27 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from fin_toolkit.models.results import InvestmentIdeaResult
+from fin_toolkit.report.i18n import (
+    DISCLAIMER,
+    HEADERS,
+    METRIC_LABELS,
+    SIGNALS,
+    fmt_price,
+    i18n_span,
+)
+from fin_toolkit.report.narrative import (
+    generate_fcf_narrative,
+    generate_target_summary,
+    generate_thesis,
+)
 
 
 def render_investment_idea_html(result: InvestmentIdeaResult) -> str:
     """Render InvestmentIdeaResult as self-contained HTML with Plotly charts."""
     sections: list[str] = [
         _header_section(result),
+        _thesis_section(result),
+        _target_price_section(result),
         _price_chart_section(result),
         _consensus_section(result),
         _fundamental_section(result),
@@ -38,11 +53,18 @@ def render_investment_idea_html(result: InvestmentIdeaResult) -> str:
 {_css()}
 </head>
 <body>
+<button id="lang-btn" class="lang-toggle" onclick="toggleLang()">RU</button>
 <div class="container">
 {body}
 </div>
+{_toggle_js()}
 </body>
 </html>"""
+
+
+# ---------------------------------------------------------------------------
+# CSS
+# ---------------------------------------------------------------------------
 
 
 def _css() -> str:
@@ -86,18 +108,58 @@ th { color: var(--blue); font-weight: 600; }
               padding: 20px; margin-top: 20px; }
 .warnings { background: #2a1a0e; border-left: 3px solid var(--yellow);
             padding: 12px; margin-top: 16px; border-radius: 0 8px 8px 0; }
+.lang-toggle { position: fixed; top: 16px; right: 16px; z-index: 1000;
+  background: var(--accent); color: var(--text); border: 1px solid var(--blue);
+  padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.9em; font-weight: 600; }
+.lang-toggle:hover { background: var(--blue); }
+.target-banner { text-align: center; padding: 28px; }
+.target-banner .target-text { font-size: 1.1em; color: var(--text); }
+.thesis-text { font-size: 1.05em; line-height: 1.7; }
 </style>"""
+
+
+# ---------------------------------------------------------------------------
+# Toggle JS
+# ---------------------------------------------------------------------------
+
+
+def _toggle_js() -> str:
+    return """<script>
+function toggleLang() {
+  var html = document.documentElement;
+  var btn = document.getElementById('lang-btn');
+  if (html.lang === 'en') {
+    html.lang = 'ru';
+    btn.textContent = 'EN';
+    document.querySelectorAll('.i18n').forEach(function(el) {
+      if (el.dataset.ru) el.textContent = el.dataset.ru;
+    });
+  } else {
+    html.lang = 'en';
+    btn.textContent = 'RU';
+    document.querySelectorAll('.i18n').forEach(function(el) {
+      if (el.dataset.en) el.textContent = el.dataset.en;
+    });
+  }
+}
+</script>"""
+
+
+# ---------------------------------------------------------------------------
+# Sections
+# ---------------------------------------------------------------------------
 
 
 def _header_section(r: InvestmentIdeaResult) -> str:
     signal = r.consensus.consensus_signal
     badge_class = f"badge-{signal.lower()}"
-    price_str = f"${r.current_price:,.2f}" if r.current_price else "N/A"
+    price_str = fmt_price(r.current_price, r.ticker)
     date_str = datetime.now().strftime("%Y-%m-%d")
+    signal_span = i18n_span(signal, SIGNALS)
     return f"""<div class="section header">
 <h1>{r.ticker}</h1>
 <p style="font-size:1.4em">{price_str}</p>
-<p><span class="badge {badge_class}">{signal}</span>
+<p><span class="badge {badge_class}">{signal_span}</span>
    Score: {r.consensus.consensus_score:.0f}/100 |
    Confidence: {r.consensus.consensus_confidence:.0%} |
    Agreement: {r.consensus.agreement:.0%}</p>
@@ -105,9 +167,36 @@ def _header_section(r: InvestmentIdeaResult) -> str:
 </div>"""
 
 
+def _thesis_section(r: InvestmentIdeaResult) -> str:
+    thesis = generate_thesis(r)
+    thesis_span = (
+        f'<span class="i18n" data-en="{thesis.en}" data-ru="{thesis.ru}">'
+        f"{thesis.en}</span>"
+    )
+    return (
+        f'<div class="section">'
+        f"<h2>{i18n_span('investment_thesis', HEADERS)}</h2>"
+        f'<p class="thesis-text">{thesis_span}</p></div>'
+    )
+
+
+def _target_price_section(r: InvestmentIdeaResult) -> str:
+    summary = generate_target_summary(r)
+    summary_span = (
+        f'<span class="i18n" data-en="{summary.en}" data-ru="{summary.ru}">'
+        f"{summary.en}</span>"
+    )
+    return (
+        f'<div class="section target-banner">'
+        f"<h2>{i18n_span('target_price', HEADERS)}</h2>"
+        f'<p class="target-text">{summary_span}</p></div>'
+    )
+
+
 def _price_chart_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("price_chart", HEADERS)
     if not r.price_history:
-        return '<div class="section"><h2>Price Chart</h2><p>No price data</p></div>'
+        return f'<div class="section"><h2>{header}</h2><p>No price data</p></div>'
 
     dates = [p.get("date", "") for p in r.price_history]
     closes = [p.get("close", 0) for p in r.price_history]
@@ -129,10 +218,11 @@ def _price_chart_section(r: InvestmentIdeaResult) -> str:
     )
 
     chart_html = fig.to_html(full_html=False, include_plotlyjs=False)
-    return f'<div class="section"><h2>Price Chart</h2>{chart_html}</div>'
+    return f'<div class="section"><h2>{header}</h2>{chart_html}</div>'
 
 
 def _consensus_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("agent_consensus", HEADERS)
     bars = ""
     for name, ar in r.consensus.agent_results.items():
         color = "#00d68f" if ar.signal == "Bullish" else (
@@ -151,10 +241,11 @@ def _consensus_section(r: InvestmentIdeaResult) -> str:
             errors += f"<p>{name}: {err}</p>"
         errors += "</div>"
 
-    return f'<div class="section"><h2>Agent Consensus</h2>{bars}{errors}</div>'
+    return f'<div class="section"><h2>{header}</h2>{bars}{errors}</div>'
 
 
 def _fundamental_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("fundamental_snapshot", HEADERS)
     rows = ""
     for category, metrics in [
         ("Profitability", r.fundamentals.profitability),
@@ -163,16 +254,18 @@ def _fundamental_section(r: InvestmentIdeaResult) -> str:
     ]:
         for key, val in metrics.items():
             formatted = _format_metric(key, val)
-            rows += f"<tr><td>{category}</td><td>{key}</td><td>{formatted}</td></tr>"
+            label = i18n_span(key, METRIC_LABELS)
+            rows += f"<tr><td>{category}</td><td>{label}</td><td>{formatted}</td></tr>"
 
-    return f"""<div class="section"><h2>Fundamental Snapshot</h2>
+    return f"""<div class="section"><h2>{header}</h2>
 <table><tr><th>Category</th><th>Metric</th><th>Value</th></tr>{rows}</table></div>"""
 
 
 def _fcf_waterfall_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("fcf_waterfall", HEADERS)
     w = r.fcf_waterfall
     if w.ebitda is None:
-        return '<div class="section"><h2>FCF Waterfall</h2><p>No data</p></div>'
+        return f'<div class="section"><h2>{header}</h2><p>No data</p></div>'
 
     labels = ["EBITDA", "CAPEX", "Interest", "Taxes", "FCF"]
     values = [
@@ -198,11 +291,23 @@ def _fcf_waterfall_section(r: InvestmentIdeaResult) -> str:
     )
 
     chart_html = fig.to_html(full_html=False, include_plotlyjs=False)  # type: ignore[no-untyped-call]
-    fcf_ps = f"<p>FCF/Share: ${w.fcf_per_share:,.2f}</p>" if w.fcf_per_share else ""
-    return f'<div class="section"><h2>FCF Waterfall</h2>{chart_html}{fcf_ps}</div>'
+    fcf_ps = f"<p>FCF/Share: {fmt_price(w.fcf_per_share, r.ticker)}</p>" if w.fcf_per_share else ""
+
+    narrative = generate_fcf_narrative(r)
+    narrative_span = (
+        f'<span class="i18n" data-en="{narrative.en}" data-ru="{narrative.ru}">'
+        f"{narrative.en}</span>"
+    )
+    narrative_html = f"<p style=\"margin-top:12px\">{narrative_span}</p>"
+
+    return (
+        f'<div class="section"><h2>{header}</h2>'
+        f"{chart_html}{fcf_ps}{narrative_html}</div>"
+    )
 
 
 def _historical_trends_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("historical_trends", HEADERS)
     parts: list[str] = []
     cagr_text = ""
     if r.revenue_cagr_3y is not None:
@@ -212,31 +317,42 @@ def _historical_trends_section(r: InvestmentIdeaResult) -> str:
     if cagr_text:
         parts.append(f"<p>{cagr_text}</p>")
     content = "".join(parts) or "<p>No history</p>"
-    return f'<div class="section"><h2>Historical Trends</h2>{content}</div>'
+    return f'<div class="section"><h2>{header}</h2>{content}</div>'
 
 
 def _scenario_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("scenario_valuation", HEADERS)
     if not r.scenarios:
-        return '<div class="section"><h2>Scenario Valuation</h2><p>No data</p></div>'
+        return f'<div class="section"><h2>{header}</h2><p>No data</p></div>'
 
     rows = ""
     for s in r.scenarios:
         label_map = {"bull": "bullish", "bear": "bearish"}
         badge = f'badge-{label_map.get(s.label, "neutral")}'
-        tp = f"${s.target_price:,.2f}" if s.target_price is not None else "N/A"
+        tp = fmt_price(s.target_price, r.ticker) if s.target_price is not None else "N/A"
         up = f"{s.upside_pct:+.1f}%" if s.upside_pct is not None else "N/A"
         febitda = _fmt_large(s.forward_ebitda) if s.forward_ebitda else "N/A"
+        ev_ebitda = f"{s.target_ev_ebitda:.1f}x" if s.target_ev_ebitda is not None else "N/A"
         rows += f"""<tr><td><span class="badge {badge}">{s.label.upper()}</span></td>
-<td>{febitda}</td><td>{tp}</td><td>{up}</td></tr>"""
+<td>{febitda}</td><td>{ev_ebitda}</td><td>{tp}</td><td>{up}</td></tr>"""
 
-    return f"""<div class="section"><h2>Scenario Valuation</h2>
-<table><tr><th>Scenario</th><th>Fwd EBITDA</th><th>Target Price</th><th>Upside</th></tr>
+    thead = (
+        "<th>Scenario</th><th>Fwd EBITDA</th><th>EV/EBITDA</th>"
+        "<th>Target Price</th><th>Upside</th>"
+    )
+    return f"""<div class="section"><h2>{header}</h2>
+<table><tr>{thead}</tr>
 {rows}</table></div>"""
 
 
 def _catalysts_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("catalysts", HEADERS)
+    no_data = (
+        '<span class="i18n" data-en="No catalysts detected" '
+        'data-ru="Катализаторы не обнаружены">No catalysts detected</span>'
+    )
     if not r.catalysts:
-        return '<div class="section"><h2>Catalysts</h2><p>No catalysts detected</p></div>'
+        return f'<div class="section"><h2>{header}</h2><p>{no_data}</p></div>'
 
     cards = ""
     for c in r.catalysts:
@@ -249,13 +365,30 @@ def _catalysts_section(r: InvestmentIdeaResult) -> str:
 <h3>{c.category.replace("_"," ").title()} <span class="badge {badge}">{c.sentiment}</span></h3>
 <p>{c.description}</p>{link}</div>"""
 
-    return f'<div class="section"><h2>Catalysts</h2><div class="card-grid">{cards}</div></div>'
+    return f'<div class="section"><h2>{header}</h2><div class="card-grid">{cards}</div></div>'
 
 
 def _risks_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("risk_catalog", HEADERS)
+    no_data = (
+        '<span class="i18n" data-en="No significant risks" '
+        'data-ru="Значимых рисков не выявлено">No significant risks</span>'
+    )
     if not r.risks:
-        return '<div class="section"><h2>Risk Catalog</h2><p>No significant risks</p></div>'
+        return f'<div class="section"><h2>{header}</h2><p>{no_data}</p></div>'
 
+    th_cat = (
+        '<span class="i18n" data-en="Category" '
+        'data-ru="Категория">Category</span>'
+    )
+    th_desc = (
+        '<span class="i18n" data-en="Description" '
+        'data-ru="Описание">Description</span>'
+    )
+    th_sev = (
+        '<span class="i18n" data-en="Severity" '
+        'data-ru="Серьёзность">Severity</span>'
+    )
     rows = ""
     for risk in r.risks:
         badge = f'badge-{risk.severity}'
@@ -263,11 +396,13 @@ def _risks_section(r: InvestmentIdeaResult) -> str:
 <td>{risk.description}</td>
 <td><span class="badge {badge}">{risk.severity.upper()}</span></td></tr>"""
 
-    return f"""<div class="section"><h2>Risk Catalog</h2>
-<table><tr><th>Category</th><th>Description</th><th>Severity</th></tr>{rows}</table></div>"""
+    return f"""<div class="section"><h2>{header}</h2>
+<table><tr><th>{th_cat}</th><th>{th_desc}</th><th>{th_sev}</th></tr>
+{rows}</table></div>"""
 
 
 def _technical_section(r: InvestmentIdeaResult) -> str:
+    header = i18n_span("technical_signals", HEADERS)
     t = r.technical
     signals_html = ""
     for name, sig in t.signals.items():
@@ -275,19 +410,35 @@ def _technical_section(r: InvestmentIdeaResult) -> str:
 
     rsi_str = f"{t.rsi:.1f}" if t.rsi else "N/A"
     bias_badge = f'badge-{t.overall_bias.lower()}'
+    bias_span = i18n_span(t.overall_bias, SIGNALS)
 
-    return f"""<div class="section"><h2>Technical Signals</h2>
-<p>RSI: {rsi_str} | Bias: <span class="badge {bias_badge}">{t.overall_bias}</span></p>
-<table><tr><th>Signal</th><th>Value</th></tr>{signals_html}</table></div>"""
+    th_sig = (
+        '<span class="i18n" data-en="Signal" '
+        'data-ru="Сигнал">Signal</span>'
+    )
+    th_val = (
+        '<span class="i18n" data-en="Value" '
+        'data-ru="Значение">Value</span>'
+    )
+    return f"""<div class="section"><h2>{header}</h2>
+<p>RSI: {rsi_str} | Bias: <span class="badge {bias_badge}">{bias_span}</span></p>
+<table><tr><th>{th_sig}</th><th>{th_val}</th></tr>{signals_html}</table></div>"""
 
 
 def _disclaimer_section() -> str:
-    return """<div class="disclaimer">
-<p>This report is for informational purposes only and does not constitute
-investment advice. Past performance is not indicative of future results.
-Always conduct your own research before making investment decisions.</p>
+    disclaimer_span = (
+        f'<span class="i18n" data-en="{DISCLAIMER.en}" '
+        f'data-ru="{DISCLAIMER.ru}">{DISCLAIMER.en}</span>'
+    )
+    return f"""<div class="disclaimer">
+<p>{disclaimer_span}</p>
 <p>Generated by fin-toolkit</p>
 </div>"""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _format_metric(key: str, val: float | None) -> str:

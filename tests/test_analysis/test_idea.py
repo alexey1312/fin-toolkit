@@ -7,7 +7,6 @@ import pytest
 from fin_toolkit.models.financial import FinancialStatements, KeyMetrics
 from fin_toolkit.models.results import RiskResult, SearchResult
 
-
 # ---------------------------------------------------------------------------
 # compute_cagr
 # ---------------------------------------------------------------------------
