@@ -166,6 +166,12 @@ def _serve() -> None:
 
     watchlist_store = WatchlistStore()
 
+    # Build portfolio store
+    from fin_toolkit.portfolio_store import PortfolioStore
+
+    db_path = Path(config.database.path).expanduser()
+    portfolio_store = PortfolioStore(db_path=db_path)
+
     # Initialize and run
     server = init_server(
         provider_router=provider_router,
@@ -174,6 +180,7 @@ def _serve() -> None:
         fundamental_analyzer=fundamental,
         agent_registry=agent_registry,
         watchlist_store=watchlist_store,
+        portfolio_store=portfolio_store,
     )
     server.run()
 
@@ -195,7 +202,10 @@ def _setup() -> None:
         config_file.parent.mkdir(parents=True, exist_ok=True)
         defaults = ToolkitConfig()
         content = yaml.dump(
-            defaults.model_dump(exclude_defaults=False, exclude={"rate_limits", "markets"}),
+            defaults.model_dump(
+                exclude_defaults=False,
+                exclude={"rate_limits", "markets", "database"},
+            ),
             default_flow_style=False,
             sort_keys=False,
         )
@@ -306,7 +316,7 @@ def _status() -> None:
     # Summary
     print(f"\n── Ready {'─' * 31}")
     print(f"{data_count} data + {search_count} search providers active.")
-    print("All 18 tools available.")
+    print("All 20 tools available.")
 
     # Examples based on available providers
     print("\nTry asking Claude:")

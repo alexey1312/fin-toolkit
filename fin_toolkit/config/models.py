@@ -35,6 +35,12 @@ class SearchConfig(BaseModel):
     gemini_model: str = "gemini-3.1-flash-lite"
 
 
+class DatabaseConfig(BaseModel):
+    """Database configuration."""
+
+    path: str = "~/.config/fin-toolkit/fin-toolkit.db"
+
+
 class AgentsConfig(BaseModel):
     """Agent configuration."""
 
@@ -104,6 +110,7 @@ class ToolkitConfig(BaseModel):
     rate_limits: dict[str, RateLimitConfig] = Field(default_factory=dict)
     markets: dict[str, MarketConfig] = Field(default_factory=dict)
     api_keys: dict[str, str] = Field(default_factory=dict)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
 
     def model_post_init(self, __context: object) -> None:
         # Apply default rate limits for missing providers

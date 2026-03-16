@@ -43,6 +43,7 @@ from fin_toolkit.models.results import (
     WatchlistCheckResult,
     WatchlistInfo,
 )
+from fin_toolkit.portfolio_store import PortfolioStore
 from fin_toolkit.providers.router import ProviderRouter
 from fin_toolkit.providers.search_router import SearchRouter
 from fin_toolkit.watchlist import WatchlistStore
@@ -59,6 +60,7 @@ _technical_analyzer: TechnicalAnalyzer | None = None
 _fundamental_analyzer: FundamentalAnalyzer | None = None
 _agent_registry: AgentRegistry | None = None
 _watchlist_store: WatchlistStore | None = None
+_portfolio_store: PortfolioStore | None = None
 
 mcp = FastMCP("fin-toolkit")
 
@@ -113,11 +115,12 @@ def init_server(
     fundamental_analyzer: FundamentalAnalyzer,
     agent_registry: AgentRegistry,
     watchlist_store: WatchlistStore | None = None,
+    portfolio_store: PortfolioStore | None = None,
 ) -> FastMCP:
     """Initialize shared state and return the MCP server instance."""
     global _provider_router, _search_router  # noqa: PLW0603
     global _technical_analyzer, _fundamental_analyzer, _agent_registry  # noqa: PLW0603
-    global _watchlist_store  # noqa: PLW0603
+    global _watchlist_store, _portfolio_store  # noqa: PLW0603
 
     _provider_router = provider_router
     _search_router = search_router
@@ -125,6 +128,7 @@ def init_server(
     _fundamental_analyzer = fundamental_analyzer
     _agent_registry = agent_registry
     _watchlist_store = watchlist_store
+    _portfolio_store = portfolio_store
 
     return mcp
 
@@ -1339,6 +1343,267 @@ async def check_watchlist(
         return _error_response(exc)
     except Exception as exc:
         logger.exception("Unexpected error in check_watchlist")
+        return _error_response(f"Internal error: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Portfolio tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool
+async def manage_portfolio(
+    action: str,
+    portfolio: str | None = None,
+    ticker: str | None = None,
+    shares: float | None = None,
+    price: float | None = None,
+    fee: float = 0,
+    currency: str = "USD",
+    date: str | None = None,
+    notes: str | None = None,
+    format: str = "toon",
+) -> str:
+    """Manage portfolios: create, delete, buy/sell, list, show positions, history.
+
+    Args:
+        action: "create", "delete", "list", "show", "buy", "sell", or "history".
+        portfolio: Portfolio name (required for all except "list").
+        ticker: Ticker symbol (required for "buy", "sell", "history" with filter).
+        shares: Number of shares (required for "buy" and "sell").
+        price: Price per share (required for "buy" and "sell").
+        fee: Transaction fee (default: 0).
+        currency: Base currency for new portfolio (default: "USD").
+        date: Transaction date ISO 8601 (default: now).
+        notes: Optional notes.
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        if _portfolio_store is None:
+            return _error_response("Portfolio store not initialized")
+
+        if action == "create":
+            if not portfolio:
+                return _error_response("Portfolio name required for 'create'")
+            pid = _portfolio_store.create_portfolio(portfolio, currency=currency, notes=notes)
+            return serialize(
+                {"status": "ok", "action": "created", "portfolio": portfolio, "id": pid},
+                format,
+            )
+
+        if action == "delete":
+            if not portfolio:
+                return _error_response("Portfolio name required for 'delete'")
+            _portfolio_store.delete_portfolio(portfolio)
+            return serialize(
+                {"status": "ok", "action": "deleted", "portfolio": portfolio}, format,
+            )
+
+        if action == "list":
+            portfolios = _portfolio_store.list_portfolios()
+            return serialize({"portfolios": portfolios}, format)
+
+        if action in ("buy", "sell"):
+            if not portfolio:
+                return _error_response("Portfolio name required")
+            if not ticker:
+                return _error_response("Ticker required for buy/sell")
+            if shares is None or shares <= 0:
+                return _error_response("Positive shares required for buy/sell")
+            if price is None or price <= 0:
+                return _error_response("Positive price required for buy/sell")
+            tid = _portfolio_store.add_transaction(
+                portfolio, ticker, action, shares, price,
+                fee=fee, executed_at=date, notes=notes,
+            )
+            return serialize(
+                {"status": "ok", "action": action, "ticker": ticker,
+                 "shares": shares, "price": price, "transaction_id": tid},
+                format,
+            )
+
+        if action == "show":
+            if not portfolio:
+                return _error_response("Portfolio name required for 'show'")
+            assert _provider_router is not None
+            positions = _portfolio_store.get_positions(portfolio)
+
+            enriched: list[dict[str, Any]] = []
+            total_value = 0.0
+            total_invested = 0.0
+            warnings: list[str] = []
+            start, end = _period_to_dates("1m")
+
+            for pos in positions:
+                d = pos.model_dump()
+                total_invested += pos.total_invested
+                try:
+                    pd = await _provider_router.get_prices(pos.ticker, start, end)
+                    if pd.prices:
+                        cp = pd.prices[-1].close
+                        mv = cp * pos.shares
+                        pnl = mv - pos.avg_cost * pos.shares
+                        d["current_price"] = cp
+                        d["market_value"] = round(mv, 2)
+                        d["pnl"] = round(pnl, 2)
+                        d["pnl_pct"] = round(
+                            pnl / (pos.avg_cost * pos.shares) * 100, 2,
+                        )
+                        total_value += mv
+                except Exception as exc:
+                    warnings.append(f"{pos.ticker}: {exc}")
+                enriched.append(d)
+
+            if total_value > 0:
+                for d in enriched:
+                    if d.get("market_value") is not None:
+                        d["weight"] = round(d["market_value"] / total_value * 100, 2)
+
+            total_pnl = total_value - total_invested if total_value > 0 else None
+            total_pnl_pct = (
+                round(total_pnl / total_invested * 100, 2)
+                if total_pnl is not None and total_invested > 0 else None
+            )
+
+            result = {
+                "portfolio": portfolio,
+                "positions": enriched,
+                "total_invested": round(total_invested, 2),
+                "total_value": round(total_value, 2) if total_value > 0 else None,
+                "total_pnl": round(total_pnl, 2) if total_pnl is not None else None,
+                "total_pnl_pct": total_pnl_pct,
+                "warnings": warnings,
+            }
+            return serialize(result, format)
+
+        if action == "history":
+            if not portfolio:
+                return _error_response("Portfolio name required for 'history'")
+            txns = _portfolio_store.get_transactions(portfolio, ticker=ticker)
+            return serialize(
+                {"portfolio": portfolio, "ticker": ticker,
+                 "transactions": [t.model_dump() for t in txns]},
+                format,
+            )
+
+        return _error_response(f"Unknown action: {action}")
+    except FinToolkitError as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        logger.exception("Unexpected error in manage_portfolio")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
+async def portfolio_performance(
+    portfolio: str,
+    period: str = "1m",
+    format: str = "toon",
+) -> str:
+    """Analyze portfolio performance over a time period.
+
+    Computes P&L, returns, and per-ticker breakdown for a given period.
+
+    Args:
+        portfolio: Portfolio name.
+        period: Time period - "1m", "3m", "6m", "1y", "ytd", "all" (default: "1m").
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        if _portfolio_store is None:
+            return _error_response("Portfolio store not initialized")
+        assert _provider_router is not None
+
+        from fin_toolkit.models.portfolio import PortfolioPerformance
+
+        if period == "ytd":
+            start_date = f"{datetime.now().year}-01-01"
+            end_date = datetime.now().strftime("%Y-%m-%d")
+        elif period == "all":
+            start_date = "2000-01-01"
+            end_date = datetime.now().strftime("%Y-%m-%d")
+        else:
+            start_date, end_date = _period_to_dates(period)
+
+        all_txns = _portfolio_store.get_transactions(portfolio)
+        period_txns = [
+            t for t in all_txns if start_date <= t.executed_at[:10] <= end_date
+        ]
+
+        positions = _portfolio_store.get_positions(portfolio)
+        warnings: list[str] = []
+
+        current_prices: dict[str, float] = {}
+        start_p, end_p = _period_to_dates(period)
+        for pos in positions:
+            try:
+                pd = await _provider_router.get_prices(pos.ticker, start_p, end_p)
+                if pd.prices:
+                    current_prices[pos.ticker] = pd.prices[-1].close
+            except Exception as exc:
+                warnings.append(f"{pos.ticker}: {exc}")
+
+        end_value = sum(
+            current_prices.get(p.ticker, 0) * p.shares for p in positions
+        )
+
+        # Start positions = end positions reversed by period transactions
+        start_positions: dict[str, float] = {p.ticker: p.shares for p in positions}
+        for t in period_txns:
+            if t.action == "buy":
+                start_positions[t.ticker] = start_positions.get(t.ticker, 0) - t.shares
+            else:
+                start_positions[t.ticker] = start_positions.get(t.ticker, 0) + t.shares
+
+        start_value = 0.0
+        start_prices: dict[str, float] = {}
+        for tkr, sh in start_positions.items():
+            if sh <= 1e-9:
+                continue
+            try:
+                pd = await _provider_router.get_prices(tkr, start_p, end_p)
+                if pd.prices:
+                    start_prices[tkr] = pd.prices[0].close
+                    start_value += pd.prices[0].close * sh
+            except Exception as exc:
+                warnings.append(f"{tkr} start price: {exc}")
+
+        net_invested = 0.0
+        for t in period_txns:
+            if t.action == "buy":
+                net_invested += t.shares * t.price + t.fee
+            else:
+                net_invested -= t.shares * t.price - t.fee
+
+        pnl = end_value - start_value - net_invested
+        base = start_value + net_invested if (start_value + net_invested) > 0 else 1
+        pnl_pct = round(pnl / base * 100, 2)
+
+        ticker_returns: dict[str, float] = {}
+        for pos in positions:
+            cp = current_prices.get(pos.ticker)
+            sp = start_prices.get(pos.ticker)
+            if cp and sp and sp > 0:
+                ticker_returns[pos.ticker] = round((cp - sp) / sp * 100, 2)
+
+        perf = PortfolioPerformance(
+            name=portfolio,
+            period=period,
+            start_value=round(start_value, 2),
+            end_value=round(end_value, 2),
+            pnl=round(pnl, 2),
+            pnl_pct=pnl_pct,
+            transactions_count=len(period_txns),
+            ticker_returns=ticker_returns,
+        )
+
+        out = perf.model_dump()
+        out["warnings"] = warnings
+        return serialize(out, format)
+    except FinToolkitError as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        logger.exception("Unexpected error in portfolio_performance")
         return _error_response(f"Internal error: {exc}")
 
 

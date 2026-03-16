@@ -142,3 +142,14 @@ class WatchlistError(FinToolkitError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+
+class PortfolioError(FinToolkitError):
+    """Raised for portfolio-specific errors."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+    @property
+    def hint(self) -> str:
+        return "Check portfolio name and transaction parameters."

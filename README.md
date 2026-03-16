@@ -53,6 +53,10 @@ Run `fin-toolkit status` to see what's available.
 │  │deep_dive     │ │compare_      │ │manage_       │ │check_     │ │
 │  │              │ │stocks        │ │watchlist     │ │watchlist  │ │
 │  └──────────────┘ └──────────────┘ └──────────────┘ └───────────┘ │
+│  ┌──────────────┐ ┌──────────────┐                                │
+│  │manage_       │ │portfolio_    │  + set_alert                   │
+│  │portfolio     │ │performance   │                                │
+│  └──────────────┘ └──────────────┘                                │
 │                             │                                       │
 │  ┌──────────────────────────┴──────────────────────────────────┐   │
 │  │                    Routing Layer                              │   │
@@ -277,6 +281,34 @@ watchlist: "default"
 
 Returns: list of triggered alerts with current values.
 
+### manage_portfolio
+
+Manage portfolios with buy/sell transactions (SQLite-backed at `~/.config/fin-toolkit/fin-toolkit.db`).
+
+```
+action: "create"      # create, delete, list, show, buy, sell, history
+portfolio: "us_tech"
+ticker: "AAPL"        # required for buy/sell/history
+shares: 10            # required for buy/sell
+price: 150.0          # required for buy/sell
+fee: 0                # optional transaction fee
+currency: "USD"       # for create (USD, RUB, KZT)
+date: null            # ISO 8601, default: now
+```
+
+`show` enriches positions with live prices, P&L, and portfolio weights.
+
+### portfolio_performance
+
+Analyze portfolio performance over a time period.
+
+```
+portfolio: "us_tech"
+period: "1m"          # 1m, 3m, 6m, 1y, ytd, all
+```
+
+Returns: start/end value, P&L, P&L %, transaction count, per-ticker returns.
+
 ## Analysis Agents
 
 | Agent | Style | Scoring |
@@ -360,18 +392,20 @@ fin-toolkit/
   models/             # Pydantic models
     price_data.py     #   PricePoint, PriceData
     financial.py      #   FinancialStatements, KeyMetrics
+    portfolio.py      #   Transaction, Position, PortfolioSummary, PortfolioPerformance
     results.py        #   TechnicalResult, FundamentalResult, RiskResult, AgentResult, etc.
   config/             # Configuration
     models.py         #   ToolkitConfig, DataConfig, SearchConfig, etc.
     loader.py         #   YAML + env + defaults loader
   mcp_server/         # FastMCP server
-    server.py         #   MCP tools (18 tools)
+    server.py         #   MCP tools (20 tools)
     serialize.py      #   TOON/JSON serialization
   report/             # Report generation
     html_report.py    #   Interactive HTML reports with Plotly charts (13 sections, EN/RU toggle)
     i18n.py           #   Bilingual translations, currency helpers
     narrative.py      #   Template-based thesis/FCF/target narratives
   watchlist.py        # YAML-backed persistent watchlist store
+  portfolio_store.py  # SQLite-backed portfolio store (transactions, positions)
   cli.py              # CLI entry point (serve, setup, status)
 ```
 
@@ -381,7 +415,7 @@ All major boundaries are `typing.Protocol` classes with `@runtime_checkable`. Ne
 
 ### Exception hierarchy
 
-All exceptions inherit from `FinToolkitError`. Key subtypes: `TickerNotFoundError`, `ProviderUnavailableError`, `AllProvidersFailedError`, `InsufficientDataError`, `AgentNotFoundError`.
+All exceptions inherit from `FinToolkitError`. Key subtypes: `TickerNotFoundError`, `ProviderUnavailableError`, `AllProvidersFailedError`, `InsufficientDataError`, `AgentNotFoundError`, `PortfolioError`.
 
 ## Configuration
 

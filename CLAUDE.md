@@ -54,7 +54,7 @@ New providers/agents implement the protocol; no base class inheritance needed.
 ### MCP server wiring
 
 `mcp_server/server.py` uses module-level globals initialized by `init_server()`. The CLI (`cli.py`) builds all dependencies (providers, analyzers, registry, watchlist store) and passes them to `init_server()` before calling `server.run()`.
-- `init_server()` accepts optional `watchlist_store: WatchlistStore | None` — `cli.py` creates `WatchlistStore()` and passes it
+- `init_server()` accepts optional `watchlist_store: WatchlistStore | None` and `portfolio_store: PortfolioStore | None` — `cli.py` creates both and passes them
 
 All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON saves 30-60% tokens on tabular data. Errors always return JSON. Serialization logic in `mcp_server/serialize.py`.
 - `_error_response(exc)` accepts `FinToolkitError | str` — pass exception objects (not `str(exc)`) for `FinToolkitError` catches to include `hint` in JSON response
@@ -82,14 +82,14 @@ All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON s
 
 ### Exception hierarchy
 
-All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `TickerNotFoundError`, `ProviderUnavailableError`, `AllProvidersFailedError`, `InsufficientDataError`, `AgentNotFoundError`, `InvalidFilterError`, `WatchlistError`.
+All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `TickerNotFoundError`, `ProviderUnavailableError`, `AllProvidersFailedError`, `InsufficientDataError`, `AgentNotFoundError`, `InvalidFilterError`, `WatchlistError`, `PortfolioError`.
 - `FinToolkitError.hint` property returns actionable guidance string (empty by default). Override in subclasses. Used by `_error_response` in server.py.
 
 ### Config resolution
 
 Priority: env vars → `.env` → `./fin-toolkit.yaml` → `~/.config/fin-toolkit/config.yaml` → defaults.
 Config files are NOT merged — first found wins. API keys in global config are invisible if local config exists.
-- `_setup()` writes Pydantic defaults from `ToolkitConfig().model_dump()` — no hardcoded `_DEFAULT_CONFIG`. Excludes `rate_limits` and `markets` from generated YAML.
+- `_setup()` writes Pydantic defaults from `ToolkitConfig().model_dump()` — no hardcoded `_DEFAULT_CONFIG`. Excludes `rate_limits`, `markets`, and `database` from generated YAML.
 `_status()` uses `load_config()` + `available_providers()` — do not duplicate availability logic.
 
 ### Search provider chain
@@ -173,6 +173,16 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Alert metrics routed to source: KeyMetrics (pe_ratio, roe, etc.), RiskResult (volatility_30d, var_95), TechnicalResult (rsi, ema_20)
 - MCP tools: `manage_watchlist` (add/remove/list/show), `set_alert`, `check_watchlist`
 
+### Portfolio store
+
+- `portfolio_store.py` — `PortfolioStore` class: SQLite-backed at `~/.config/fin-toolkit/fin-toolkit.db`
+- Schema: `portfolios` (name, currency, created_at) + `transactions` (ticker, action, shares, price, fee, executed_at); positions are computed aggregates, not stored
+- `get_positions()` — pure SQL aggregate (`SUM(CASE WHEN action='buy'...)`), no live prices; MCP `show` action enriches with `_provider_router.get_prices()`
+- Sell validation: `shares ≤ current position` checked in `add_transaction()`
+- SQLite HAVING gotcha: aliases don't work in HAVING — must repeat the full `SUM(CASE...)` expression
+- `DatabaseConfig(path="~/.config/fin-toolkit/fin-toolkit.db")` in `config/models.py`, excluded from `_setup()` YAML generation
+- MCP tools: `manage_portfolio` (create/delete/list/show/buy/sell/history), `portfolio_performance`
+
 ### Deep dive & comparison
 
 - `deep_dive` MCP tool: batch analysis for 1-10 tickers, concurrent fetch per ticker via `_deep_dive_single()`, partial failures → item-level warnings
@@ -205,6 +215,8 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - EDGAR tests: use `SimpleNamespace` (not MagicMock) for XBRL objects — `float(MagicMock())` silently returns 1.0
 - EDGAR tests: patch `"edgar.Company"` with `create=True` (lazy import inside static method)
 - Watchlist tests use `tmp_path` fixture for isolated YAML storage — `WatchlistStore(path=tmp_path / "w.yaml")`
+- Portfolio store tests use `tmp_path` for isolated SQLite — `PortfolioStore(db_path=tmp_path / "test.db")`
+- Portfolio MCP tool tests: `autouse` fixture patches `_portfolio_store` with tmp store; `show`/`performance` actions also need `_provider_router` mock
 - `deep_dive` partial failures: price/financials/metrics fail independently → warnings in `DeepDiveItem.warnings`, NOT batch-level `DeepDiveResult.warnings`
 - Comparison/alerts are pure functions — tested without mocks, same as portfolio functions
 
