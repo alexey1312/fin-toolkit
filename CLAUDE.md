@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start.
 
-- CLI is infrastructure-only (`serve`, `setup`, `status`) — all financial analysis is exposed exclusively via MCP tools
+- CLI is infrastructure-only (`serve`, `setup`, `status`, `quickstart`) — all financial analysis is exposed exclusively via MCP tools
 - `fin-toolkit setup` registers the server in `.mcp.json` (local) or `~/.claude.json` (with `--global`)
 - MCP entry uses `uv run --project <path>` (NOT `uvx` — package is not on PyPI)
 - `fin-toolkit status` shows provider/agent availability
 
 ## Development
 
-- `mise install && uv sync` to set up
+- `uv sync` to set up
 - `uv run pytest` to run all tests
 - `uv run pytest tests/test_providers/test_yahoo.py::test_get_prices` to run a single test
 - `uv run pytest --cov` to run with coverage (fails under 80%)
@@ -57,6 +57,7 @@ New providers/agents implement the protocol; no base class inheritance needed.
 - `init_server()` accepts optional `watchlist_store: WatchlistStore | None` — `cli.py` creates `WatchlistStore()` and passes it
 
 All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON saves 30-60% tokens on tabular data. Errors always return JSON. Serialization logic in `mcp_server/serialize.py`.
+- `_error_response(exc)` accepts `FinToolkitError | str` — pass exception objects (not `str(exc)`) for `FinToolkitError` catches to include `hint` in JSON response
 
 ### Analysis agents
 
@@ -82,11 +83,13 @@ All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON s
 ### Exception hierarchy
 
 All exceptions inherit from `FinToolkitError` (`exceptions.py`). Key subtypes: `TickerNotFoundError`, `ProviderUnavailableError`, `AllProvidersFailedError`, `InsufficientDataError`, `AgentNotFoundError`, `InvalidFilterError`, `WatchlistError`.
+- `FinToolkitError.hint` property returns actionable guidance string (empty by default). Override in subclasses. Used by `_error_response` in server.py.
 
 ### Config resolution
 
 Priority: env vars → `.env` → `./fin-toolkit.yaml` → `~/.config/fin-toolkit/config.yaml` → defaults.
 Config files are NOT merged — first found wins. API keys in global config are invisible if local config exists.
+- `_setup()` writes Pydantic defaults from `ToolkitConfig().model_dump()` — no hardcoded `_DEFAULT_CONFIG`. Excludes `rate_limits` and `markets` from generated YAML.
 `_status()` uses `load_config()` + `available_providers()` — do not duplicate availability logic.
 
 ### Search provider chain
