@@ -29,10 +29,12 @@ theme:
     - content.tabs.link
     - search.suggest
     - search.highlight
+  logo: assets/logo.png
+  favicon: assets/logo.png
   icon:
     repo: fontawesome/brands/github
   font:
-    text: Inter
+    text: Outfit
     code: JetBrains Mono
 
 extra_css:

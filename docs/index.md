@@ -6,6 +6,8 @@ hide:
 
 <div class="ft-hero" markdown>
 
+<img src="assets/logo.png" alt="fin-toolkit" class="ft-hero-logo">
+
 # fin-toolkit
 
 <div class="ft-ticker">
