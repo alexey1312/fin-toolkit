@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" width="350" alt="fin-toolkit logo">
+</p>
+
 # fin-toolkit
 
 [![docs](https://img.shields.io/badge/docs-alexey1312.github.io/fin--toolkit-blue)](https://alexey1312.github.io/fin-toolkit/)
