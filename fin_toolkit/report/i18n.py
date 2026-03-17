@@ -98,6 +98,15 @@ _RU_TICKERS: frozenset[str] = frozenset({
 })
 
 # ---------------------------------------------------------------------------
+# Known Kazakhstan tickers (KASE equities)
+# ---------------------------------------------------------------------------
+
+_KZ_TICKERS: frozenset[str] = frozenset({
+    "KCEL", "AIRA", "HSBK", "KZTO", "KEGC", "CCBN", "KZAP",
+    "BTAS", "KZTK", "GB_KZMS",
+})
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -118,14 +127,23 @@ def i18n_span(key: str, translations: dict[str, LangPair]) -> str:
 
 
 def currency_symbol(ticker: str) -> str:
-    """Return the currency symbol for a ticker."""
+    """Return the currency symbol for a ticker.
+
+    Suffix-based overrides take priority (GDR on foreign exchange = USD),
+    then bare tickers are checked against known RU/KZ sets.
+    """
     upper = ticker.upper()
     if upper.endswith(".ME"):
         return "₽"
     base = upper.split(".")[0]
+    # Suffixed tickers (.IL, .L, etc.) are foreign-listed GDRs → USD
+    if "." in upper:
+        if base in _RU_TICKERS:
+            return "₽"
+        return "$"
     if base in _RU_TICKERS:
         return "₽"
-    if upper.endswith(".IL"):
+    if base in _KZ_TICKERS:
         return "₸"
     return "$"
 

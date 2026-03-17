@@ -1,5 +1,7 @@
 """Price data models."""
 
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -20,3 +22,4 @@ class PriceData(BaseModel):
     ticker: str
     period: str
     prices: list[PricePoint]
+    currency: str = "USD"

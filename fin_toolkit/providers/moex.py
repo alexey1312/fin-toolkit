@@ -52,7 +52,9 @@ class MOEXProvider:
         if not prices:
             raise TickerNotFoundError(ticker, provider="moex")
 
-        return PriceData(ticker=ticker, period=f"{start}/{end}", prices=prices)
+        return PriceData(
+            ticker=ticker, period=f"{start}/{end}", prices=prices, currency="RUB",
+        )
 
     async def get_financials(self, ticker: str) -> FinancialStatements:
         """MOEX ISS does not provide financial statements."""

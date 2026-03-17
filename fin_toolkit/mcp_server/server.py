@@ -993,7 +993,8 @@ async def _resolve_market_tickers(market: str) -> list[str]:
     if market == "kase":
         kase_prov = _provider_router._providers.get("kase")  # type: ignore[union-attr]
         if kase_prov and hasattr(kase_prov, "list_tickers"):
-            return await kase_prov.list_tickers()
+            result: list[str] = await kase_prov.list_tickers()
+            return result
         return []
     return []
 

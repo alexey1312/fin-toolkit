@@ -39,6 +39,7 @@ class TestMOEXGetPrices:
                 result = await provider.get_prices("SBER", "2024-01-01", "2024-02-01")
 
         assert result.ticker == "SBER"
+        assert result.currency == "RUB"
         assert len(result.prices) == 2
         assert result.prices[0].close == 103.0
 

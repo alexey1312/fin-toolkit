@@ -69,6 +69,31 @@ class TestKASEClient:
             await client.get_share_data("KCEL")
 
     @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
+    async def test_get_share_data_unwraps_list(self, mock_cls: AsyncMock) -> None:
+        """KASE API may return a list instead of a dict — unwrap it."""
+        fixture = _load_fixture("kase_share_data.json")
+        mock_client = AsyncMock()
+        mock_client.get.return_value = _mock_response([fixture])  # list!
+        mock_cls.return_value.__aenter__.return_value = mock_client
+
+        client = _KASEClient()
+        result = await client.get_share_data("KCEL")
+        assert result["ticker"] == "KCEL"
+        assert result["price"] == 4620.0
+
+    @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
+    async def test_get_trade_info_unwraps_list(self, mock_cls: AsyncMock) -> None:
+        """KASE API may return a list for trade_info — unwrap it."""
+        fixture = _load_fixture("kase_trade_info.json")
+        mock_client = AsyncMock()
+        mock_client.get.return_value = _mock_response([fixture])  # list!
+        mock_cls.return_value.__aenter__.return_value = mock_client
+
+        client = _KASEClient()
+        result = await client.get_trade_info("KCEL")
+        assert result["price"] == 4620.0
+
+    @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
     async def test_get_trade_info_success(self, mock_cls: AsyncMock) -> None:
         fixture = _load_fixture("kase_trade_info.json")
         mock_client = AsyncMock()
@@ -78,7 +103,9 @@ class TestKASEClient:
         client = _KASEClient()
         result = await client.get_trade_info("KCEL")
 
-        assert result["close"] == 4620.0
+        assert result["price"] == 4620.0
+        assert result["high"] == 4650.0
+        assert result["low"] == 4480.0
         assert result["volume"] == 125_000
 
     @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
@@ -164,40 +191,54 @@ class TestKASEClient:
 
 
 class TestKASEProvider:
-    async def test_get_prices_delegates_to_yahoo(self) -> None:
-        """get_prices should delegate to Yahoo via multi-suffix resolution."""
-        from fin_toolkit.models.price_data import PricePoint
+    @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
+    async def test_get_prices_returns_kzt_from_trade_info(
+        self, mock_cls: AsyncMock,
+    ) -> None:
+        """get_prices uses KASE API and returns KZT prices."""
+        fixture = _load_fixture("kase_trade_info.json")
+        mock_client = AsyncMock()
+        mock_client.get.return_value = _mock_response(fixture)
+        mock_cls.return_value.__aenter__.return_value = mock_client
 
-        mock_yahoo = AsyncMock()
-        price_data = AsyncMock(
-            period="2024-01-01/2024-01-05",
-            prices=[
-                PricePoint(
-                    date="2024-01-02", open=4500.0, high=4650.0,
-                    low=4480.0, close=4620.0, volume=125_000,
-                ),
-            ],
-        )
-        mock_yahoo.get_prices.return_value = price_data
-
-        provider = KASEProvider(yahoo=mock_yahoo)
+        provider = KASEProvider()
         result = await provider.get_prices("KCEL", "2024-01-01", "2024-01-05")
 
         assert result.ticker == "KCEL"
+        assert result.currency == "KZT"
         assert len(result.prices) == 1
+        # open = average_price (KASE has no open), close = price (last)
+        assert result.prices[0].open == 4550.0
+        assert result.prices[0].high == 4650.0
+        assert result.prices[0].low == 4480.0
         assert result.prices[0].close == 4620.0
-        # First call is probe (.ME), second is actual fetch
-        assert mock_yahoo.get_prices.call_count == 2
-        # Both use .ME suffix (probe succeeded)
-        calls = mock_yahoo.get_prices.call_args_list
-        assert calls[0].args[0] == "KCEL.ME"
-        assert calls[1].args[0] == "KCEL.ME"
+        assert result.prices[0].volume == 125_000
+        assert result.prices[0].date == "2024-01-02"
 
-    async def test_get_prices_no_yahoo_raises(self) -> None:
-        """get_prices without Yahoo provider should raise."""
+    @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
+    async def test_get_prices_works_without_yahoo(self, mock_cls: AsyncMock) -> None:
+        """get_prices no longer requires Yahoo provider."""
+        fixture = _load_fixture("kase_trade_info.json")
+        mock_client = AsyncMock()
+        mock_client.get.return_value = _mock_response(fixture)
+        mock_cls.return_value.__aenter__.return_value = mock_client
+
+        provider = KASEProvider()  # no yahoo
+        result = await provider.get_prices("KCEL", "2024-01-01", "2024-01-05")
+
+        assert result.ticker == "KCEL"
+        assert result.currency == "KZT"
+
+    @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
+    async def test_get_prices_ticker_not_found(self, mock_cls: AsyncMock) -> None:
+        """404 from trade_info raises TickerNotFoundError."""
+        mock_client = AsyncMock()
+        mock_client.get.return_value = _mock_response(None, status_code=404)
+        mock_cls.return_value.__aenter__.return_value = mock_client
+
         provider = KASEProvider()
-        with pytest.raises(ProviderUnavailableError):
-            await provider.get_prices("KCEL", "2024-01-01", "2024-01-05")
+        with pytest.raises(TickerNotFoundError):
+            await provider.get_prices("INVALID", "2024-01-01", "2024-01-05")
 
     @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
     async def test_get_metrics_success(self, mock_cls: AsyncMock) -> None:
@@ -333,99 +374,79 @@ class TestListTickers:
         assert result == ["KCEL", "CCBN"]
 
 
-# ── Multi-suffix Yahoo resolution tests ───────────────────────────
+# ── Multi-suffix Yahoo resolution tests (financials/metrics only) ──
 
 
 class TestYahooSuffixResolution:
-    async def test_get_prices_tries_me_then_il(self) -> None:
-        """When .ME fails, should try .IL suffix (AIRA case)."""
-        from fin_toolkit.models.price_data import PricePoint
-
+    async def test_financials_tries_me_then_il(self) -> None:
+        """When .ME fails, should try .IL suffix for financials."""
         mock_yahoo = AsyncMock()
-        price_data = AsyncMock(
-            period="2024-01-01/2024-01-05",
-            prices=[PricePoint(
-                date="2024-01-02", open=10.0, high=11.0,
-                low=9.0, close=10.5, volume=1000,
-            )],
-        )
-        # Probe .ME fails, probe .IL succeeds, then fetch .IL succeeds
+        # Probe .ME fails, probe .IL succeeds
         mock_yahoo.get_prices.side_effect = [
             TickerNotFoundError("AIRA.ME"),
-            price_data,
-            price_data,
+            AsyncMock(period="p", prices=[AsyncMock(date="2024-01-02")]),
         ]
+        mock_yahoo.get_financials.return_value = FinancialStatements(
+            ticker="AIRA.IL",
+            income_statement={"revenue": 100},
+            balance_sheet=None,
+            cash_flow=None,
+        )
 
         provider = KASEProvider(yahoo=mock_yahoo)
-        result = await provider.get_prices("AIRA", "2024-01-01", "2024-01-05")
+        result = await provider.get_financials("AIRA")
 
         assert result.ticker == "AIRA"
-        assert mock_yahoo.get_prices.call_count == 3
-        calls = mock_yahoo.get_prices.call_args_list
-        assert calls[0].args[0] == "AIRA.ME"  # probe
-        assert calls[1].args[0] == "AIRA.IL"  # probe (success)
-        assert calls[2].args[0] == "AIRA.IL"  # actual fetch
+        assert result.income_statement == {"revenue": 100}
+        mock_yahoo.get_financials.assert_called_once_with("AIRA.IL")
 
-    async def test_get_prices_caches_suffix(self) -> None:
-        """Once suffix is found, subsequent calls use cache."""
-        from fin_toolkit.models.price_data import PricePoint
+    async def test_suffix_cache_works_across_methods(self) -> None:
+        """Once suffix is cached by financials, metrics reuse it."""
+        fixture = _load_fixture("kase_share_data.json")
 
         mock_yahoo = AsyncMock()
-        price_data = AsyncMock(
-            period="2024-01-01/2024-01-05",
-            prices=[PricePoint(
-                date="2024-01-02", open=10.0, high=11.0,
-                low=9.0, close=10.5, volume=1000,
-            )],
+        # Probe .ME succeeds
+        mock_yahoo.get_prices.return_value = AsyncMock(
+            period="p", prices=[AsyncMock(date="2024-01-02")],
         )
-        # First: probe .ME (fail) + probe .IL (ok) + fetch .IL
-        # Second: fetch .IL (cached suffix, no probe)
-        mock_yahoo.get_prices.side_effect = [
-            TickerNotFoundError("AIRA.ME"),
-            price_data,
-            price_data,
-            price_data,
-        ]
+        mock_yahoo.get_financials.return_value = FinancialStatements(
+            ticker="KCEL.ME",
+            income_statement={"revenue": 500},
+            balance_sheet=None,
+            cash_flow=None,
+        )
+        mock_yahoo.get_metrics.return_value = KeyMetrics(
+            ticker="KCEL.ME",
+            pe_ratio=None,
+            pb_ratio=None,
+            market_cap=None,
+            dividend_yield=None,
+            roe=0.25,
+            roa=None,
+            debt_to_equity=None,
+        )
 
         provider = KASEProvider(yahoo=mock_yahoo)
-        await provider.get_prices("AIRA", "2024-01-01", "2024-01-05")
-        await provider.get_prices("AIRA", "2024-01-01", "2024-01-05")
+        await provider.get_financials("KCEL")
 
-        # 3 for first (probe .ME + probe .IL + fetch .IL), 1 for second (cached)
-        assert mock_yahoo.get_prices.call_count == 4
-        last_call = mock_yahoo.get_prices.call_args_list[3]
-        assert last_call.args[0] == "AIRA.IL"
+        # Second call should use cached suffix — no extra probe
+        with patch("fin_toolkit.providers.kase.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = _mock_response(fixture)
+            mock_cls.return_value.__aenter__.return_value = mock_client
+            await provider.get_metrics("KCEL")
 
-    async def test_get_prices_all_suffixes_fail(self) -> None:
+        # Probe was called once (for financials), not again for metrics
+        assert mock_yahoo.get_prices.call_count == 1
+
+    async def test_all_suffixes_fail_raises(self) -> None:
         """When all suffixes fail, raise ProviderUnavailableError."""
         mock_yahoo = AsyncMock()
         mock_yahoo.get_prices.side_effect = TickerNotFoundError("fail")
 
         provider = KASEProvider(yahoo=mock_yahoo)
         with pytest.raises(ProviderUnavailableError, match="No Yahoo ticker"):
-            await provider.get_prices("XXXX", "2024-01-01", "2024-01-05")
-
-    async def test_get_prices_me_succeeds_first(self) -> None:
-        """When .ME works (e.g. KCEL), probe + fetch = 2 calls."""
-        from fin_toolkit.models.price_data import PricePoint
-
-        mock_yahoo = AsyncMock()
-        mock_yahoo.get_prices.return_value = AsyncMock(
-            period="2024-01-01/2024-01-05",
-            prices=[PricePoint(
-                date="2024-01-02", open=4500.0, high=4650.0,
-                low=4480.0, close=4620.0, volume=125_000,
-            )],
-        )
-
-        provider = KASEProvider(yahoo=mock_yahoo)
-        result = await provider.get_prices("KCEL", "2024-01-01", "2024-01-05")
-
-        assert result.ticker == "KCEL"
-        assert mock_yahoo.get_prices.call_count == 2  # probe + fetch
-        calls = mock_yahoo.get_prices.call_args_list
-        assert calls[0].args[0] == "KCEL.ME"
-        assert calls[1].args[0] == "KCEL.ME"
+            await provider._resolve_yahoo_ticker("XXXX")
 
 
 # ── Financials delegation tests ───────────────────────────────────

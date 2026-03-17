@@ -44,6 +44,7 @@ This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start
 - `_df_to_history(df)` in `yahoo.py` converts ALL columns to `list[dict]` for historical trends; columns may be datetime or string (in mocks) — check `hasattr(col, "strftime")`
 - `KeyMetrics` extended fields: `ev_ebitda` (from `info["enterpriseToEbitda"]`), `fcf_yield` (computed: freeCashflow/marketCap), `shares_outstanding`, `current_price`
 - `FinancialStatements` extended: `income_history`, `cash_flow_history` — list of period dicts from all DataFrame columns
+- `PriceData.currency` field: `str = "USD"` (backward-compatible). MOEX sets `"RUB"`, KASE sets `"KZT"`, Yahoo/FinancialDatasets default `"USD"`
 
 ### Protocol-first design
 
@@ -208,8 +209,12 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - `list_tickers()` — dynamic ticker discovery via `list_securities(sec_type="share")`, cached 24h, filtered by `_LOCAL_SHARE_CATEGORIES` (premium/standard/alternative — excludes KASE Global cross-listings and delisted)
 - `DEFAULT_MARKETS["kz"].tickers` is empty — routing is dynamic via `ProviderRouter._ensure_dynamic_tickers()`
 - `_ensure_dynamic_tickers()` uses `asyncio.Lock` with double-checked locking — required because 6 agents call `get_prices` concurrently via `asyncio.gather`
-- Historical OHLCV: delegated to Yahoo Finance with multi-suffix resolution (`_resolve_yahoo_ticker`)
-- `_YAHOO_SUFFIXES = (".ME", ".IL", "")` — tries each until success, caches working suffix per ticker
+- `get_prices()` uses KASE API natively (`get_trade_info`), returns KZT prices. Only current-day OHLCV — no deep history. For historical GDR prices in USD, use `provider="yahoo"` or `.IL`/`.ME` suffix
+- KASE trade-info API fields: `price` (last/close), `high`, `low`, `average_price` (used as open proxy — no real open), `date0` (timestamp), `volume`. No `open`/`close` fields
+- KASE API may return list `[{...}]` instead of dict — `_unwrap()` handles both
+- KASE share_data API fields differ from trade-info: `capit` (market_cap), `price`, `pe`, `pb`, `dividend_yield`, `ticker`
+- Always test KASE changes against live API (`uv run python3 -c "..."`) — fixtures may diverge from real responses
+- `_YAHOO_SUFFIXES = (".ME", ".IL", "")` — used by `_resolve_yahoo_ticker` for financials/metrics enrichment, caches working suffix per ticker
 - `get_financials()` delegates to Yahoo via resolved suffix; returns None fields if Yahoo unavailable
 - `get_metrics()` merges KASE primary (5 fields: pe, pb, div_yield, market_cap, price) with Yahoo enrichment (roe, roa, d/e, ev, ev_ebitda, fcf_yield, shares)
 - `KASEProvider(yahoo=providers.get("yahoo"))` — Yahoo instance passed from `cli.py`

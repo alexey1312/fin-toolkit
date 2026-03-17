@@ -78,3 +78,16 @@ class TestPriceData:
         assert d["ticker"] == "AAPL"
         assert isinstance(d["prices"], list)
         assert d["prices"][0]["close"] == 152.0
+
+    def test_currency_defaults_to_usd(self) -> None:
+        pd = PriceData(ticker="AAPL", period="1y", prices=[])
+        assert pd.currency == "USD"
+
+    def test_currency_kzt_preserved(self) -> None:
+        pd = PriceData(ticker="KCEL", period="1d", prices=[], currency="KZT")
+        assert pd.currency == "KZT"
+
+    def test_currency_in_model_dump(self) -> None:
+        pd = PriceData(ticker="SBER", period="1y", prices=[], currency="RUB")
+        d = pd.model_dump()
+        assert d["currency"] == "RUB"

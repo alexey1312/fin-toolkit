@@ -9,7 +9,7 @@ import httpx
 
 from fin_toolkit.exceptions import ProviderUnavailableError, TickerNotFoundError
 from fin_toolkit.models.financial import FinancialStatements, KeyMetrics
-from fin_toolkit.models.price_data import PriceData
+from fin_toolkit.models.price_data import PriceData, PricePoint
 
 _BASE_URL = "https://kase.kz/api"
 
@@ -42,6 +42,23 @@ def _is_local_share(security: dict[str, Any]) -> bool:
     return False
 
 
+def _safe_float(val: Any) -> float | None:
+    """Safely convert to float or return None."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _unwrap(data: Any) -> dict[str, Any]:
+    """Unwrap KASE API response — may be a dict or a single-element list."""
+    if isinstance(data, list):
+        return dict(data[0]) if data else {}
+    return dict(data)
+
+
 class _KASEClient:
     """Thin async HTTP client for kase.kz/api/* endpoints."""
 
@@ -71,24 +88,22 @@ class _KASEClient:
         data = await self._get("/instruments/securities", params={"code": code})
         if not data:
             return None
-        if isinstance(data, list):
-            result: dict[str, Any] = data[0] if data else {}
-            return result or None
-        return dict(data)
+        result = _unwrap(data)
+        return result or None
 
     async def get_share_data(self, ticker: str) -> dict[str, Any]:
         """Get realtime share data (price, bid/offer, capit, trand, etc.)."""
         data = await self._get(f"/instruments/shares/{ticker}")
         if not data:
             raise TickerNotFoundError(ticker, provider="kase")
-        return dict(data)
+        return _unwrap(data)
 
     async def get_trade_info(self, ticker: str) -> dict[str, Any]:
         """Get daily trade info (OHLCV for current day)."""
         data = await self._get(f"/instruments/trade-info/{ticker}")
         if not data:
             raise TickerNotFoundError(ticker, provider="kase")
-        return dict(data)
+        return _unwrap(data)
 
     async def get_last_deals(self, ticker: str) -> list[dict[str, Any]]:
         """Get last 10 deals for a ticker."""
@@ -107,7 +122,7 @@ class _KASEClient:
     async def get_characteristics(self, ticker: str) -> dict[str, Any] | None:
         """Get listing characteristics."""
         data = await self._get(f"/instruments/characteristics/{ticker}")
-        return dict(data) if data else None
+        return _unwrap(data) if data else None
 
     async def search(self, query: str) -> dict[str, Any]:
         """Search issuers, securities, and members."""
@@ -183,14 +198,42 @@ class KASEProvider:
         raise ProviderUnavailableError("kase", f"No Yahoo ticker for {ticker}")
 
     async def get_prices(self, ticker: str, start: str, end: str) -> PriceData:
-        """Fetch historical prices via Yahoo Finance with multi-suffix resolution."""
-        if self._yahoo is None:
-            raise ProviderUnavailableError(
-                "kase", "Historical prices require Yahoo provider (yahoo= parameter)",
-            )
-        yahoo_ticker = await self._resolve_yahoo_ticker(ticker)
-        result = await self._yahoo.get_prices(yahoo_ticker, start, end)
-        return PriceData(ticker=ticker, period=result.period, prices=result.prices)
+        """Fetch current-day prices from KASE API in KZT.
+
+        KASE API provides only current-day OHLCV, not deep history.
+        For historical GDR prices in USD, use Yahoo provider directly.
+
+        API fields: high, low, price (last/close), average_price,
+        date0 (timestamp), volume, deals_count. No open price available.
+        """
+        data = await self._client.get_trade_info(ticker)
+
+        # Extract date from date0 ("2026-03-17 17:30:38") or period
+        raw_date = str(data.get("date0", data.get("period", "")))[:10]
+
+        # KASE API has no open price — use average_price as proxy
+        price = _safe_float(data.get("price", 0.0))
+        high = _safe_float(data.get("high", 0.0))
+        low = _safe_float(data.get("low", 0.0))
+        avg = _safe_float(data.get("average_price")) or price
+
+        prices = [
+            PricePoint(
+                date=raw_date,
+                open=avg or 0.0,
+                high=high or 0.0,
+                low=low or 0.0,
+                close=price or 0.0,
+                volume=int(data.get("volume", 0)),
+            ),
+        ]
+
+        return PriceData(
+            ticker=ticker,
+            period=f"{start}/{end}",
+            prices=prices,
+            currency="KZT",
+        )
 
     async def get_financials(self, ticker: str) -> FinancialStatements:
         """Fetch financials via Yahoo delegation; returns None fields if unavailable."""

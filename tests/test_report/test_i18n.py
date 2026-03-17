@@ -72,8 +72,16 @@ class TestCurrencySymbol:
         assert currency_symbol("GAZP") == "₽"
         assert currency_symbol("LKOH") == "₽"
 
-    def test_il_suffix_returns_tenge(self) -> None:
-        assert currency_symbol("KCEL.IL") == "₸"
+    def test_known_kz_ticker_returns_tenge(self) -> None:
+        assert currency_symbol("KCEL") == "₸"
+        assert currency_symbol("AIRA") == "₸"
+        assert currency_symbol("HSBK") == "₸"
+        assert currency_symbol("KZTO") == "₸"
+
+    def test_il_suffix_returns_dollar(self) -> None:
+        """`.IL` is Tel Aviv Stock Exchange, not Kazakhstan."""
+        assert currency_symbol("KCEL.IL") == "$"
+        assert currency_symbol("AIRA.IL") == "$"
 
     def test_us_ticker_returns_dollar(self) -> None:
         assert currency_symbol("AAPL") == "$"
@@ -93,7 +101,7 @@ class TestFmtPrice:
         assert "3" in result
 
     def test_tenge_formatting(self) -> None:
-        result = fmt_price(5500.0, "KCEL.IL")
+        result = fmt_price(5500.0, "KCEL")
         assert "₸" in result
 
     def test_none_returns_na(self) -> None:
