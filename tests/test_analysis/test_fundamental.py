@@ -214,6 +214,135 @@ class TestMissingData:
         assert result.valuation["fcf_yield"] is None
 
 
+class TestFallbackFromFinancials:
+    """ROE/ROA/D/E fallback: computed from financial statements when KeyMetrics values are None."""
+
+    def test_roe_fallback_from_financials(self) -> None:
+        fs = _make_financials(net_income=100, total_equity=500)
+        km = _make_metrics(roe=None)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.profitability["roe"] is not None
+        assert abs(result.profitability["roe"] - 0.2) < 0.001  # type: ignore[operator]
+
+    def test_roa_fallback_from_financials(self) -> None:
+        fs = _make_financials(net_income=100, total_assets=1000)
+        km = _make_metrics(roa=None)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.profitability["roa"] is not None
+        assert abs(result.profitability["roa"] - 0.1) < 0.001  # type: ignore[operator]
+
+    def test_debt_to_equity_fallback_from_financials(self) -> None:
+        fs = _make_financials(total_debt=300, total_equity=200)
+        km = _make_metrics(debt_to_equity=None)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.stability["debt_to_equity"] is not None
+        assert abs(result.stability["debt_to_equity"] - 1.5) < 0.001  # type: ignore[operator]
+
+    def test_metrics_preferred_over_fallback(self) -> None:
+        fs = _make_financials(net_income=100, total_equity=500)  # would give 0.2
+        km = _make_metrics(roe=0.25)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.profitability["roe"] == 0.25
+
+    def test_fallback_with_missing_financials(self) -> None:
+        fs = FinancialStatements(
+            ticker="TEST",
+            income_statement=None,
+            balance_sheet=None,
+            cash_flow=None,
+        )
+        km = _make_metrics(roe=None, roa=None, debt_to_equity=None)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.profitability["roe"] is None
+        assert result.profitability["roa"] is None
+        assert result.stability["debt_to_equity"] is None
+
+    def test_kase_ticker_realistic(self) -> None:
+        """AIRA-like data: all km metrics None except market_cap/price, financials present."""
+        fs = FinancialStatements(
+            ticker="AIRA",
+            income_statement={
+                "revenue": 350_000_000,
+                "net_income": 52_700_000,
+                "gross_profit": 150_000_000,
+                "operating_income": 70_000_000,
+                "interest_expense": 10_000_000,
+            },
+            balance_sheet={
+                "total_assets": 1_800_000_000,
+                "total_equity": 394_500_000,
+                "total_debt": 889_000_000,
+                "current_assets": 500_000_000,
+                "current_liabilities": 300_000_000,
+                "invested_capital": 1_283_500_000,
+            },
+            cash_flow={
+                "operating_cash_flow": 80_000_000,
+                "capital_expenditures": 20_000_000,
+            },
+        )
+        km = KeyMetrics(
+            ticker="AIRA",
+            pe_ratio=None, pb_ratio=None,
+            market_cap=1_000_000_000, dividend_yield=None,
+            roe=None, roa=None, debt_to_equity=None,
+            enterprise_value=None,
+        )
+        result = FundamentalAnalyzer().analyze(fs, km)
+        # ROE = 52.7M / 394.5M ≈ 0.1335
+        assert result.profitability["roe"] is not None
+        assert abs(result.profitability["roe"] - 0.1335) < 0.01  # type: ignore[operator]
+        # ROA = 52.7M / 1.8B ≈ 0.0293
+        assert result.profitability["roa"] is not None
+        assert abs(result.profitability["roa"] - 0.0293) < 0.01  # type: ignore[operator]
+        # D/E = 889M / 394.5M ≈ 2.253
+        assert result.stability["debt_to_equity"] is not None
+        assert abs(result.stability["debt_to_equity"] - 2.253) < 0.01  # type: ignore[operator]
+
+    def test_pe_fallback_from_financials(self) -> None:
+        """P/E computed from market_cap / net_income when pe_ratio is None."""
+        fs = _make_financials(net_income=100)
+        km = _make_metrics(pe_ratio=None, market_cap=1000)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.valuation["pe_ratio"] is not None
+        assert abs(result.valuation["pe_ratio"] - 10.0) < 0.001  # type: ignore[operator]
+
+    def test_pb_fallback_from_financials(self) -> None:
+        """P/B computed from market_cap / total_equity when pb_ratio is None."""
+        fs = _make_financials(total_equity=500)
+        km = _make_metrics(pb_ratio=None, market_cap=1000)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.valuation["pb_ratio"] is not None
+        assert abs(result.valuation["pb_ratio"] - 2.0) < 0.001  # type: ignore[operator]
+
+    def test_ev_ebitda_fallback(self) -> None:
+        """EV/EBITDA computed when enterprise_value is None but market_cap exists."""
+        fs = _make_financials(total_debt=300, ebitda=200)
+        # Add cash_and_equivalents to balance_sheet
+        fs.balance_sheet["cash_and_equivalents"] = 100  # type: ignore[index]
+        km = _make_metrics(enterprise_value=None, market_cap=1000)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        # EV = 1000 + 300 - 100 = 1200; EV/EBITDA = 1200 / 200 = 6.0
+        assert result.valuation["ev_ebitda"] is not None
+        assert abs(result.valuation["ev_ebitda"] - 6.0) < 0.001  # type: ignore[operator]
+
+    def test_pe_preferred_over_fallback(self) -> None:
+        """KeyMetrics pe_ratio takes priority over computed fallback."""
+        fs = _make_financials(net_income=100)
+        km = _make_metrics(pe_ratio=15.0, market_cap=1000)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.valuation["pe_ratio"] == 15.0
+
+    def test_valuation_fallback_no_market_cap(self) -> None:
+        """When market_cap is None, valuation fallbacks all return None."""
+        fs = _make_financials(net_income=100, total_equity=500)
+        km = _make_metrics(pe_ratio=None, pb_ratio=None, enterprise_value=None, market_cap=None)
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.valuation["pe_ratio"] is None
+        assert result.valuation["pb_ratio"] is None
+        assert result.valuation["ev_ebitda"] is None
+
+
 class TestSectorComparison:
     def test_technology_above_median(self) -> None:
         """High ROE should be above_median for Technology."""

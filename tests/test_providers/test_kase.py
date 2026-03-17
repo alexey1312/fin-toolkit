@@ -588,3 +588,141 @@ class TestEnrichedMetrics:
 
         assert result.pe_ratio == 12.5
         assert result.roe is None
+
+    @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
+    async def test_get_metrics_kase_none_pe_fallback_yahoo(
+        self, mock_cls: AsyncMock,
+    ) -> None:
+        """When KASE pe/pb/dividend_yield are None, fall back to Yahoo values."""
+        # Fixture with pe/pb/dividend_yield set to None
+        fixture = _load_fixture("kase_share_data.json")
+        fixture["pe"] = None
+        fixture["pb"] = None
+        fixture["dividend_yield"] = None
+        mock_client = AsyncMock()
+        mock_client.get.return_value = _mock_response(fixture)
+        mock_cls.return_value.__aenter__.return_value = mock_client
+
+        mock_yahoo = AsyncMock()
+        mock_yahoo.get_prices.return_value = AsyncMock(
+            period="p", prices=[AsyncMock(date="2024-01-02")],
+        )
+        mock_yahoo.get_metrics.return_value = KeyMetrics(
+            ticker="KCEL.IL",
+            pe_ratio=6.6,
+            pb_ratio=1.2,
+            market_cap=8_570_000_000,
+            dividend_yield=0.05,
+            roe=0.25,
+            roa=0.12,
+            debt_to_equity=0.5,
+            enterprise_value=9_000_000_000,
+        )
+
+        provider = KASEProvider(yahoo=mock_yahoo)
+        result = await provider.get_metrics("KCEL")
+
+        # KASE pe/pb/dividend_yield are None → fallback to Yahoo (no SA)
+        assert result.pe_ratio == 6.6
+        assert result.pb_ratio == 1.2
+        assert result.dividend_yield == 0.05
+        # KASE primary fields still used
+        assert result.market_cap == 462_000_000_000.0
+        assert result.current_price == 4620.0
+
+    @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
+    async def test_get_metrics_stockanalysis_preferred_over_yahoo(
+        self, mock_cls: AsyncMock,
+    ) -> None:
+        """StockAnalysis ratios take priority over Yahoo (currency-consistent)."""
+        fixture = _load_fixture("kase_share_data.json")
+        fixture["pe"] = None
+        fixture["pb"] = None
+        fixture["dividend_yield"] = None
+        mock_client = AsyncMock()
+        mock_client.get.return_value = _mock_response(fixture)
+        mock_cls.return_value.__aenter__.return_value = mock_client
+
+        mock_sa = AsyncMock()
+        mock_sa.get_metrics.return_value = KeyMetrics(
+            ticker="KCEL",
+            pe_ratio=39.2,
+            pb_ratio=3.38,
+            market_cap=660_000_000_000,
+            dividend_yield=None,
+            roe=0.09,
+            roa=0.058,
+            debt_to_equity=0.85,
+            enterprise_value=700_000_000_000,
+            ev_ebitda=10.81,
+            fcf_yield=-0.0016,
+        )
+
+        mock_yahoo = AsyncMock()
+        mock_yahoo.get_prices.return_value = AsyncMock(
+            period="p", prices=[AsyncMock(date="2024-01-02")],
+        )
+        mock_yahoo.get_metrics.return_value = KeyMetrics(
+            ticker="KCEL.IL",
+            pe_ratio=404.0,  # Yahoo has different (wrong) value
+            pb_ratio=99.0,
+            market_cap=500e9,
+            dividend_yield=0.03,
+            roe=0.05,
+            roa=0.02,
+            debt_to_equity=1.5,
+            enterprise_value=550e9,
+            ev_ebitda=16.0,
+            shares_outstanding=1e8,
+        )
+
+        provider = KASEProvider(yahoo=mock_yahoo, stockanalysis=mock_sa)
+        result = await provider.get_metrics("KCEL")
+
+        # StockAnalysis wins over Yahoo
+        assert result.pe_ratio == 39.2
+        assert result.pb_ratio == 3.38
+        assert result.roe == 0.09
+        assert result.ev_ebitda == 10.81
+        # Yahoo provides shares_outstanding (not in SA)
+        assert result.shares_outstanding == 1e8
+        # KASE primary market_cap/price
+        assert result.market_cap == 462_000_000_000.0
+
+    @patch("fin_toolkit.providers.kase.httpx.AsyncClient")
+    async def test_get_metrics_sa_fails_falls_to_yahoo(
+        self, mock_cls: AsyncMock,
+    ) -> None:
+        """When StockAnalysis fails, Yahoo enrichment still works."""
+        fixture = _load_fixture("kase_share_data.json")
+        fixture["pe"] = None
+        mock_client = AsyncMock()
+        mock_client.get.return_value = _mock_response(fixture)
+        mock_cls.return_value.__aenter__.return_value = mock_client
+
+        mock_sa = AsyncMock()
+        mock_sa.get_metrics.side_effect = ProviderUnavailableError(
+            "stockanalysis", "down",
+        )
+
+        mock_yahoo = AsyncMock()
+        mock_yahoo.get_prices.return_value = AsyncMock(
+            period="p", prices=[AsyncMock(date="2024-01-02")],
+        )
+        mock_yahoo.get_metrics.return_value = KeyMetrics(
+            ticker="KCEL.IL",
+            pe_ratio=6.6,
+            pb_ratio=None,
+            market_cap=500e9,
+            dividend_yield=None,
+            roe=0.25,
+            roa=None,
+            debt_to_equity=None,
+        )
+
+        provider = KASEProvider(yahoo=mock_yahoo, stockanalysis=mock_sa)
+        result = await provider.get_metrics("KCEL")
+
+        # Falls back to Yahoo
+        assert result.pe_ratio == 6.6
+        assert result.roe == 0.25

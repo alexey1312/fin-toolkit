@@ -13,6 +13,7 @@ fin-toolkit/
     kase.py           #   KASE JSON API + Yahoo multi-suffix + dynamic tickers
     moex.py           #   MOEX via aiomoex
     smartlab.py       #   SmartLab fundamentals + IFRS (scraper)
+    stockanalysis.py  #   StockAnalysis.com KASE ratios (scraper, KZT-consistent)
     financialdatasets.py  # Financial Datasets REST API
     edgar.py          #   SEC EDGAR filings via edgartools
     pdf_report.py     #   PDF report parser (IFRS/MSFO)

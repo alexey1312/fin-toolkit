@@ -9,6 +9,7 @@ fin-toolkit uses a **routing layer** to resolve data sources automatically. The 
 | Yahoo Finance | Global | No | Yes | Yes | Yes |
 | MOEX | Russia | No | Yes | No | Partial |
 | KASE | Kazakhstan | No | Via Yahoo (multi-suffix) | Via Yahoo | Yes (enriched) |
+| StockAnalysis | Kazakhstan | No | No | No | Yes |
 | SmartLab | Russia | No | No | Yes | Yes |
 | Financial Datasets | US | Yes | Yes | Yes | Yes |
 | SEC EDGAR | US | No | No | Yes | Yes |
@@ -36,10 +37,21 @@ Open REST API via `aiomoex` + `aiohttp`. No auth required.
 JSON API (`kase.kz/api/*`), no auth.
 
 - **Tickers**: dynamic discovery via `list_tickers()` — fetches all actively traded shares (premium/standard/alternative categories), cached 24h. ~87 tickers, excludes KASE Global cross-listings (AAPL_KZ, TSLA_KZ, etc.)
-- **Metrics**: 5 fields from KASE (market cap, P/E, P/B, dividend yield, price) + Yahoo enrichment (ROE, ROA, D/E, EV, EV/EBITDA, FCF yield, shares outstanding)
+- **Metrics**: enrichment chain KASE → StockAnalysis → Yahoo. KASE provides market cap and price; StockAnalysis provides currency-consistent ratios (P/E, P/B, ROE, ROA, ROIC, D/E, EV/EBITDA) in KZT; Yahoo fills remaining fields (shares outstanding) as fallback
 - **Prices**: delegated to Yahoo Finance with multi-suffix resolution (`.ME` → `.IL` → bare ticker). Suffix is cached per ticker after first successful probe
 - **Financials**: delegated to Yahoo Finance via resolved suffix; returns None fields if Yahoo unavailable
 - Dynamic routing: `ProviderRouter` discovers KASE tickers at runtime — no hardcoded ticker lists needed
+
+## StockAnalysis
+
+Scraper for `stockanalysis.com` — KASE ticker ratios. No API key, no auth.
+
+- **Metrics**: P/E, P/B, ROE, ROA, ROIC, D/E, EV/EBITDA, FCF yield, dividend yield, market cap, EV from ratios page
+- **Currency**: all ratios are in trading currency (KZT) — stockanalysis.com converts financials to trading currency before computing ratios, solving the currency mismatch problem
+- **Prices/Financials**: not supported (use KASE or Yahoo)
+- Parses Svelte JSON payload embedded in HTML (regex, not BS4)
+- URL: `stockanalysis.com/quote/kase/{TICKER}/financials/ratios/`
+- Used as primary enrichment source for KASE provider (preferred over Yahoo for ratios)
 
 ## SmartLab
 
@@ -87,7 +99,7 @@ Parse financial report PDFs via `pdfplumber`.
 |------|----------|-----|
 | Ticker discovery | KASE | Dynamic `list_tickers()`, cached 24h |
 | Prices (AIRA, KCEL, etc.) | KASE → Yahoo | Multi-suffix resolution (.ME/.IL/bare) |
-| Fundamentals (P/E, P/B) | KASE | Realtime from KASE API |
-| Enriched metrics (ROE, EV) | KASE + Yahoo | KASE primary + Yahoo enrichment |
+| Ratios (P/E, P/B, ROE) | StockAnalysis | Currency-consistent KZT ratios |
+| Enriched metrics (EV, shares) | StockAnalysis → Yahoo | SA primary, Yahoo fallback |
 | Financial statements | KASE → Yahoo | Delegated to Yahoo via resolved suffix |
 | Screening | `screen_stocks(market="kase")` | Dynamic tickers, concurrent scoring |

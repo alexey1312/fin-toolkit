@@ -79,4 +79,7 @@ rate_limits:
   kase:
     requests_per_minute: 2
     max_concurrent: 1
+  stockanalysis:
+    requests_per_minute: 5
+    max_concurrent: 2
 ```

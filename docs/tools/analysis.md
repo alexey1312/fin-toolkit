@@ -21,11 +21,11 @@ sector: null          # optional: auto-detected if omitted
 
 **Profitability:** ROE, ROA, ROIC, net margin, gross margin.
 
-**Valuation:** P/E, P/B, EV/EBITDA, FCF yield, dividend yield.
+**Valuation:** P/E, P/B, EV/EBITDA, FCF yield, dividend yield. Fallback: when metrics are unavailable, computes P/E from market_cap/net_income, P/B from market_cap/equity, EV from market_cap + debt - cash.
 
 **Stability:** D/E, current ratio, interest coverage.
 
-Includes sector comparison when sector is detected.
+Includes sector comparison when sector is detected. For KASE tickers, ratios come from StockAnalysis (KZT-consistent).
 
 ## run_risk_analysis
 

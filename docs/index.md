@@ -68,11 +68,11 @@ Elvis Marlamov, Warren Buffett, Ben Graham, Charlie Munger, Cathie Wood, Peter L
 <div class="ft-card" markdown>
 <div class="ft-card-header">
 <span class="ft-card-title">Data Providers</span>
-<span class="ft-card-badge ft-badge-green">7 SOURCES</span>
+<span class="ft-card-badge ft-badge-green">8 SOURCES</span>
 </div>
-<div class="ft-card-value">7</div>
+<div class="ft-card-value">8</div>
 <div class="ft-card-desc">
-Yahoo Finance, MOEX, KASE, SmartLab, Financial Datasets, SEC EDGAR, PDF Reports — automatic fallback routing.
+Yahoo Finance, MOEX, KASE, StockAnalysis, SmartLab, Financial Datasets, SEC EDGAR, PDF Reports — automatic fallback routing.
 </div>
 </div>
 

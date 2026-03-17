@@ -75,15 +75,24 @@ class FundamentalAnalyzer:
         km: KeyMetrics,
         warnings: list[str],
     ) -> dict[str, float | None]:
-        roe = km.roe
-        roa = km.roa
-
         revenue = _safe_get(fs.income_statement, "revenue")
         net_income = _safe_get(fs.income_statement, "net_income")
         gross_profit = _safe_get(fs.income_statement, "gross_profit")
         operating_income = _safe_get(fs.income_statement, "operating_income")
         interest_expense = _safe_get(fs.income_statement, "interest_expense")
         invested_capital = _safe_get(fs.balance_sheet, "invested_capital")
+
+        # ROE: prefer KeyMetrics, fallback to financials
+        roe = km.roe
+        if roe is None:
+            total_equity = _safe_get(fs.balance_sheet, "total_equity")
+            roe = _safe_div(net_income, total_equity)
+
+        # ROA: prefer KeyMetrics, fallback to financials
+        roa = km.roa
+        if roa is None:
+            total_assets = _safe_get(fs.balance_sheet, "total_assets")
+            roa = _safe_div(net_income, total_assets)
 
         net_margin = _safe_div(net_income, revenue)
         gross_margin = _safe_div(gross_profit, revenue)
@@ -135,17 +144,33 @@ class FundamentalAnalyzer:
         km: KeyMetrics,
         warnings: list[str],
     ) -> dict[str, float | None]:
-        pe_ratio = km.pe_ratio
-        pb_ratio = km.pb_ratio
+        market_cap = km.market_cap
         dividend_yield = km.dividend_yield
 
+        # P/E: prefer KeyMetrics, fallback to market_cap / net_income
+        pe_ratio = km.pe_ratio
+        if pe_ratio is None:
+            net_income = _safe_get(fs.income_statement, "net_income")
+            pe_ratio = _safe_div(market_cap, net_income)
+
+        # P/B: prefer KeyMetrics, fallback to market_cap / total_equity
+        pb_ratio = km.pb_ratio
+        if pb_ratio is None:
+            total_equity = _safe_get(fs.balance_sheet, "total_equity")
+            pb_ratio = _safe_div(market_cap, total_equity)
+
+        # EV: prefer KeyMetrics, fallback to market_cap + debt - cash
         enterprise_value = km.enterprise_value
+        if enterprise_value is None and market_cap is not None:
+            total_debt = _safe_get(fs.balance_sheet, "total_debt")
+            cash = _safe_get(fs.balance_sheet, "cash_and_equivalents")
+            enterprise_value = market_cap + (total_debt or 0) - (cash or 0)
+
         ebitda = _safe_get(fs.income_statement, "ebitda")
         ev_ebitda = _safe_div(enterprise_value, ebitda)
 
         operating_cf = _safe_get(fs.cash_flow, "operating_cash_flow")
         capex = _safe_get(fs.cash_flow, "capital_expenditures")
-        market_cap = km.market_cap
 
         if operating_cf is not None and capex is not None:
             fcf = operating_cf - capex
@@ -174,7 +199,12 @@ class FundamentalAnalyzer:
         km: KeyMetrics,
         warnings: list[str],
     ) -> dict[str, float | None]:
+        # D/E: prefer KeyMetrics, fallback to financials
         debt_to_equity = km.debt_to_equity
+        if debt_to_equity is None:
+            total_debt = _safe_get(fs.balance_sheet, "total_debt")
+            total_equity = _safe_get(fs.balance_sheet, "total_equity")
+            debt_to_equity = _safe_div(total_debt, total_equity)
 
         current_assets = _safe_get(fs.balance_sheet, "current_assets")
         current_liabilities = _safe_get(fs.balance_sheet, "current_liabilities")

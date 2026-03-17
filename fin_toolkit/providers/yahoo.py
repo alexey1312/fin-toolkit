@@ -30,6 +30,7 @@ _FIELD_MAP: dict[str, str] = {
     "Operating Cash Flow": "operating_cash_flow",
     "Capital Expenditure": "capital_expenditures",
     "Free Cash Flow": "free_cash_flow",
+    "Cash And Cash Equivalents": "cash_and_equivalents",
 }
 
 

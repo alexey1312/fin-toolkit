@@ -81,6 +81,8 @@ All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON s
 - New agents: implement `AnalysisAgent` protocol, add to registry `factories` dict + `_AGENT_FACTORIES`, list in config `agents.active`
 - Agent scoring: each block has sub-metrics whose max sum may exceed block MAX; `min(MAX, score)` caps the block. This allows adding metrics without redistribution — preserve block names to avoid breaking tests.
 - Available FundamentalResult metrics: profitability (roe, roa, roic, net_margin, gross_margin), valuation (pe_ratio, pb_ratio, ev_ebitda, fcf_yield, dividend_yield), stability (debt_to_equity, current_ratio, interest_coverage)
+- ROE/ROA/D/E fallback: when KeyMetrics values are None, `FundamentalAnalyzer` computes from financial statements (net_income/total_equity, net_income/total_assets, total_debt/total_equity). KeyMetrics always takes priority when available.
+- Valuation fallback: P/E = market_cap / net_income, P/B = market_cap / total_equity, EV = market_cap + debt - cash (then EV/EBITDA). Same pattern as ROE/ROA/D/E — KeyMetrics takes priority. Currency mismatch caveat: KASE market_cap (KZT) vs Yahoo financials (USD) may produce incorrect ratios.
 
 ### Consensus & portfolio layer
 
@@ -114,6 +116,7 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - `ddgs.news()` may raise `DDGSException` on complex queries — catch inside provider, not at caller level
 - SearXNG: self-hosted via Docker, `search.searxng_url` in config (default `http://localhost:8888`)
 - New search provider: implement `SearchProvider` protocol (~50 LOC), add to `config/models.py` + `cli.py`
+- New key-free provider: add to `KEY_FREE_PROVIDERS` + `DEFAULT_RATE_LIMITS` in `config/models.py`, export in `providers/__init__.py`, instantiate in `cli.py`
 - Google search provider has extra `model` param — wired separately from generic key-based loop in `cli.py`
 
 ### Financial Datasets provider
@@ -216,8 +219,20 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 - Always test KASE changes against live API (`uv run python3 -c "..."`) — fixtures may diverge from real responses
 - `_YAHOO_SUFFIXES = (".ME", ".IL", "")` — used by `_resolve_yahoo_ticker` for financials/metrics enrichment, caches working suffix per ticker
 - `get_financials()` delegates to Yahoo via resolved suffix; returns None fields if Yahoo unavailable
-- `get_metrics()` merges KASE primary (5 fields: pe, pb, div_yield, market_cap, price) with Yahoo enrichment (roe, roa, d/e, ev, ev_ebitda, fcf_yield, shares)
-- `KASEProvider(yahoo=providers.get("yahoo"))` — Yahoo instance passed from `cli.py`
+- `get_metrics()` enrichment chain: KASE primary → StockAnalysis (KZT-consistent) → Yahoo fallback. `_first()` helper picks first non-None from the chain
+- `KASEProvider(yahoo=..., stockanalysis=...)` — both instances passed from `cli.py`
+
+### StockAnalysis provider
+
+- Scraper for `stockanalysis.com` — KASE ticker ratios (P/E, P/B, ROE, ROA, ROIC, D/E, EV/EBITDA, etc.)
+- Parses Svelte `__sveltekit_*` JSON payload from ratios page HTML via regex (not BS4)
+- `financialData` object contains arrays indexed by period; index `[0]` = TTM (trailing twelve months)
+- Currency-consistent: stockanalysis converts financials to trading currency (KZT) before computing ratios — no mismatch
+- `curr` field in JSON: `{main: "KZT", price: "KZT", financial: "USD"}` — financial reporting currency may differ
+- Only `get_metrics()` supported; `get_prices()`/`get_financials()` raise `ProviderUnavailableError`
+- No API key, no auth, no anti-bot — standard HTTP GET works
+- URL pattern: `stockanalysis.com/quote/kase/{TICKER}/financials/ratios/`
+- StockAnalysis tests use inline HTML fixtures with Svelte-like `financialData:{pe:[...]}` — update fixtures if stockanalysis.com changes their JS bundle variable name
 - `_resolve_market_tickers("kase")` in server.py calls `list_tickers()` dynamically
 - `screen_stocks` Stage 1 uses `asyncio.gather` + `Semaphore(10)` for concurrent metric fetch; Stage 2 runs consensus for top-N concurrently
 - `deep_dive`, `compare_stocks`, `check_watchlist` use `asyncio.gather` for concurrent per-ticker processing (not sequential loops)

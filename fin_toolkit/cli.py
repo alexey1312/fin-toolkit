@@ -69,8 +69,13 @@ def _serve() -> None:
         providers["yahoo"] = YahooFinanceProvider()
     if "kase" in available:
         from fin_toolkit.providers.kase import KASEProvider
+        from fin_toolkit.providers.stockanalysis import StockAnalysisProvider
 
-        providers["kase"] = KASEProvider(yahoo=providers.get("yahoo"))
+        providers["stockanalysis"] = StockAnalysisProvider()
+        providers["kase"] = KASEProvider(
+            yahoo=providers.get("yahoo"),
+            stockanalysis=providers["stockanalysis"],
+        )
 
     if "moex" in available:
         from fin_toolkit.providers.moex import MOEXProvider

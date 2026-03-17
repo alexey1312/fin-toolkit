@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from typing import Any
 
@@ -140,16 +141,17 @@ class _KASEClient:
 class KASEProvider:
     """Data provider for Kazakhstan Stock Exchange via JSON API.
 
-    Uses _KASEClient for realtime data and optional YahooFinanceProvider
-    for historical OHLC prices. Tries multiple Yahoo suffixes (.ME, .IL, bare)
-    to find the correct listing.
+    Uses _KASEClient for realtime data, StockAnalysisProvider for
+    currency-consistent ratios (KZT), and optional YahooFinanceProvider
+    for financials and fallback enrichment.
     """
 
     _CACHE_TTL = 86400  # 24 hours
 
-    def __init__(self, yahoo: Any = None) -> None:
+    def __init__(self, yahoo: Any = None, stockanalysis: Any = None) -> None:
         self._client = _KASEClient()
         self._yahoo = yahoo
+        self._stockanalysis = stockanalysis
         self._tickers_cache: list[str] | None = None
         self._tickers_cache_time: float = 0.0
         self._yahoo_suffix_cache: dict[str, str] = {}
@@ -264,9 +266,21 @@ class KASEProvider:
             )
 
     async def get_metrics(self, ticker: str) -> KeyMetrics:
-        """Fetch key metrics from KASE, enriched with Yahoo data when available."""
+        """Fetch key metrics from KASE, enriched with StockAnalysis and Yahoo.
+
+        Priority chain: KASE primary → StockAnalysis (KZT-consistent) → Yahoo fallback.
+        StockAnalysis provides ratios in trading currency (KZT) without mismatch.
+        Yahoo is used for fields StockAnalysis doesn't cover (shares_outstanding).
+        """
         data = await self._client.get_share_data(ticker)
 
+        # StockAnalysis: currency-consistent ratios (preferred enrichment)
+        sa_metrics: KeyMetrics | None = None
+        if self._stockanalysis:
+            with contextlib.suppress(TickerNotFoundError, ProviderUnavailableError):
+                sa_metrics = await self._stockanalysis.get_metrics(ticker)
+
+        # Yahoo: fallback enrichment (may have currency mismatch for KZ tickers)
         yahoo_metrics: KeyMetrics | None = None
         if self._yahoo:
             try:
@@ -275,20 +289,60 @@ class KASEProvider:
             except (TickerNotFoundError, ProviderUnavailableError):
                 pass
 
+        def _first(*values: float | None) -> float | None:
+            """Return first non-None value from the chain."""
+            for v in values:
+                if v is not None:
+                    return v
+            return None
+
         return KeyMetrics(
             ticker=ticker,
             # KASE primary
             market_cap=data.get("capit"),
             current_price=data.get("price"),
-            pe_ratio=data.get("pe"),
-            pb_ratio=data.get("pb"),
-            dividend_yield=data.get("dividend_yield"),
-            # Yahoo enrichment
-            roe=yahoo_metrics.roe if yahoo_metrics else None,
-            roa=yahoo_metrics.roa if yahoo_metrics else None,
-            debt_to_equity=yahoo_metrics.debt_to_equity if yahoo_metrics else None,
-            enterprise_value=yahoo_metrics.enterprise_value if yahoo_metrics else None,
-            ev_ebitda=yahoo_metrics.ev_ebitda if yahoo_metrics else None,
-            fcf_yield=yahoo_metrics.fcf_yield if yahoo_metrics else None,
-            shares_outstanding=yahoo_metrics.shares_outstanding if yahoo_metrics else None,
+            # KASE → StockAnalysis → Yahoo
+            pe_ratio=_first(
+                data.get("pe"),
+                sa_metrics.pe_ratio if sa_metrics else None,
+                yahoo_metrics.pe_ratio if yahoo_metrics else None,
+            ),
+            pb_ratio=_first(
+                data.get("pb"),
+                sa_metrics.pb_ratio if sa_metrics else None,
+                yahoo_metrics.pb_ratio if yahoo_metrics else None,
+            ),
+            dividend_yield=_first(
+                data.get("dividend_yield"),
+                sa_metrics.dividend_yield if sa_metrics else None,
+                yahoo_metrics.dividend_yield if yahoo_metrics else None,
+            ),
+            # StockAnalysis → Yahoo enrichment
+            roe=_first(
+                sa_metrics.roe if sa_metrics else None,
+                yahoo_metrics.roe if yahoo_metrics else None,
+            ),
+            roa=_first(
+                sa_metrics.roa if sa_metrics else None,
+                yahoo_metrics.roa if yahoo_metrics else None,
+            ),
+            debt_to_equity=_first(
+                sa_metrics.debt_to_equity if sa_metrics else None,
+                yahoo_metrics.debt_to_equity if yahoo_metrics else None,
+            ),
+            enterprise_value=_first(
+                sa_metrics.enterprise_value if sa_metrics else None,
+                yahoo_metrics.enterprise_value if yahoo_metrics else None,
+            ),
+            ev_ebitda=_first(
+                sa_metrics.ev_ebitda if sa_metrics else None,
+                yahoo_metrics.ev_ebitda if yahoo_metrics else None,
+            ),
+            fcf_yield=_first(
+                sa_metrics.fcf_yield if sa_metrics else None,
+                yahoo_metrics.fcf_yield if yahoo_metrics else None,
+            ),
+            shares_outstanding=(
+                yahoo_metrics.shares_outstanding if yahoo_metrics else None
+            ),
         )

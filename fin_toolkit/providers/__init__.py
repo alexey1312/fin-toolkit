@@ -9,6 +9,7 @@ from fin_toolkit.providers.router import ProviderRouter
 from fin_toolkit.providers.search_protocol import SearchProvider
 from fin_toolkit.providers.search_router import SearchRouter
 from fin_toolkit.providers.searxng import SearXNGProvider
+from fin_toolkit.providers.stockanalysis import StockAnalysisProvider
 from fin_toolkit.providers.yahoo import YahooFinanceProvider
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "SearchProvider",
     "SearchRouter",
     "SearXNGProvider",
+    "StockAnalysisProvider",
     "TokenBucketRateLimiter",
     "YahooFinanceProvider",
 ]
