@@ -145,7 +145,11 @@ class FundamentalAnalyzer:
         warnings: list[str],
     ) -> dict[str, float | None]:
         market_cap = km.market_cap
+
+        # Dividend yield: sanity check (>1.0 = garbage, e.g. Yahoo KZT/USD mismatch)
         dividend_yield = km.dividend_yield
+        if dividend_yield is not None and dividend_yield > 1.0:
+            dividend_yield = None
 
         # P/E: prefer KeyMetrics, fallback to market_cap / net_income
         pe_ratio = km.pe_ratio
@@ -159,24 +163,25 @@ class FundamentalAnalyzer:
             total_equity = _safe_get(fs.balance_sheet, "total_equity")
             pb_ratio = _safe_div(market_cap, total_equity)
 
-        # EV: prefer KeyMetrics, fallback to market_cap + debt - cash
-        enterprise_value = km.enterprise_value
-        if enterprise_value is None and market_cap is not None:
-            total_debt = _safe_get(fs.balance_sheet, "total_debt")
-            cash = _safe_get(fs.balance_sheet, "cash_and_equivalents")
-            enterprise_value = market_cap + (total_debt or 0) - (cash or 0)
+        # EV/EBITDA: prefer KeyMetrics, fallback to computed EV / EBITDA
+        ev_ebitda = km.ev_ebitda
+        if ev_ebitda is None:
+            enterprise_value = km.enterprise_value
+            if enterprise_value is None and market_cap is not None:
+                total_debt = _safe_get(fs.balance_sheet, "total_debt")
+                cash = _safe_get(fs.balance_sheet, "cash_and_equivalents")
+                enterprise_value = market_cap + (total_debt or 0) - (cash or 0)
+            ebitda = _safe_get(fs.income_statement, "ebitda")
+            ev_ebitda = _safe_div(enterprise_value, ebitda)
 
-        ebitda = _safe_get(fs.income_statement, "ebitda")
-        ev_ebitda = _safe_div(enterprise_value, ebitda)
-
-        operating_cf = _safe_get(fs.cash_flow, "operating_cash_flow")
-        capex = _safe_get(fs.cash_flow, "capital_expenditures")
-
-        if operating_cf is not None and capex is not None:
-            fcf = operating_cf - capex
-            fcf_yield = _safe_div(fcf, market_cap)
-        else:
-            fcf_yield = None
+        # FCF yield: prefer KeyMetrics, fallback to computed (OCF - capex) / market_cap
+        fcf_yield = km.fcf_yield
+        if fcf_yield is None:
+            operating_cf = _safe_get(fs.cash_flow, "operating_cash_flow")
+            capex = _safe_get(fs.cash_flow, "capital_expenditures")
+            if operating_cf is not None and capex is not None:
+                fcf = operating_cf - capex
+                fcf_yield = _safe_div(fcf, market_cap)
 
         if pe_ratio is None and pb_ratio is None and ev_ebitda is None:
             warnings.append("No valuation ratios available")

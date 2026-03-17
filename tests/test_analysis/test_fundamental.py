@@ -342,6 +342,39 @@ class TestFallbackFromFinancials:
         assert result.valuation["pb_ratio"] is None
         assert result.valuation["ev_ebitda"] is None
 
+    def test_ev_ebitda_from_key_metrics_preferred(self) -> None:
+        """km.ev_ebitda takes priority over computed EV/EBITDA."""
+        fs = _make_financials(ebitda=200)
+        km = _make_metrics(enterprise_value=3000)
+        # Computed would be 3000/200=15.0, but km.ev_ebitda=8.5 wins
+        km_with_ev_ebitda = KeyMetrics(
+            ticker="TEST", pe_ratio=29.5, pb_ratio=46.7,
+            market_cap=2_900_000_000_000, dividend_yield=0.005,
+            roe=1.56, roa=0.275, debt_to_equity=1.787,
+            enterprise_value=3000, ev_ebitda=8.5,
+        )
+        result = FundamentalAnalyzer().analyze(fs, km_with_ev_ebitda)
+        assert result.valuation["ev_ebitda"] == 8.5
+
+    def test_fcf_yield_from_key_metrics_preferred(self) -> None:
+        """km.fcf_yield takes priority over computed FCF yield."""
+        fs = _make_financials()
+        km_with_fcf = KeyMetrics(
+            ticker="TEST", pe_ratio=29.5, pb_ratio=46.7,
+            market_cap=2_900_000_000_000, dividend_yield=0.005,
+            roe=1.56, roa=0.275, debt_to_equity=1.787,
+            enterprise_value=3_100_000_000_000, fcf_yield=0.123,
+        )
+        result = FundamentalAnalyzer().analyze(fs, km_with_fcf)
+        assert result.valuation["fcf_yield"] == 0.123
+
+    def test_dividend_yield_sanity_capped(self) -> None:
+        """dividend_yield > 1.0 is garbage data — should be None."""
+        fs = _make_financials()
+        km = _make_metrics(dividend_yield=17.72)  # Yahoo garbage
+        result = FundamentalAnalyzer().analyze(fs, km)
+        assert result.valuation["dividend_yield"] is None
+
 
 class TestSectorComparison:
     def test_technology_above_median(self) -> None:

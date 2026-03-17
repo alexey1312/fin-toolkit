@@ -82,7 +82,7 @@ All tools accept `format` param (`"toon"` | `"json"`, default: `"toon"`). TOON s
 - Agent scoring: each block has sub-metrics whose max sum may exceed block MAX; `min(MAX, score)` caps the block. This allows adding metrics without redistribution — preserve block names to avoid breaking tests.
 - Available FundamentalResult metrics: profitability (roe, roa, roic, net_margin, gross_margin), valuation (pe_ratio, pb_ratio, ev_ebitda, fcf_yield, dividend_yield), stability (debt_to_equity, current_ratio, interest_coverage)
 - ROE/ROA/D/E fallback: when KeyMetrics values are None, `FundamentalAnalyzer` computes from financial statements (net_income/total_equity, net_income/total_assets, total_debt/total_equity). KeyMetrics always takes priority when available.
-- Valuation fallback: P/E = market_cap / net_income, P/B = market_cap / total_equity, EV = market_cap + debt - cash (then EV/EBITDA). Same pattern as ROE/ROA/D/E — KeyMetrics takes priority. Currency mismatch caveat: KASE market_cap (KZT) vs Yahoo financials (USD) may produce incorrect ratios.
+- Valuation: `km.ev_ebitda` and `km.fcf_yield` take priority when present; fallback computes from financials (P/E = mc/ni, P/B = mc/equity, EV = mc + debt - cash). `dividend_yield > 1.0` is capped to None (Yahoo garbage for KASE GDRs)
 
 ### Consensus & portfolio layer
 
