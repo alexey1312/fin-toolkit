@@ -31,6 +31,9 @@ HEADERS: dict[str, LangPair] = {
     "risk_catalog": LangPair(en="Risk Catalog", ru="Каталог рисков"),
     "technical_signals": LangPair(en="Technical Signals", ru="Технические сигналы"),
     "disclaimer": LangPair(en="Disclaimer", ru="Дисклеймер"),
+    "analyst_estimates": LangPair(
+        en="Wall Street Analyst Estimates", ru="Оценки аналитиков Wall Street",
+    ),
 }
 
 # ---------------------------------------------------------------------------

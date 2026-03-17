@@ -9,7 +9,12 @@ from typing import Any
 import yfinance as yf
 
 from fin_toolkit.exceptions import TickerNotFoundError
-from fin_toolkit.models.financial import FinancialStatements, KeyMetrics
+from fin_toolkit.models.financial import (
+    AnalystEstimates,
+    EarningsEntry,
+    FinancialStatements,
+    KeyMetrics,
+)
 from fin_toolkit.models.price_data import PriceData, PricePoint
 
 # Mapping from yfinance field names to normalized keys expected by the analyzer.
@@ -95,6 +100,40 @@ class YahooFinanceProvider:
             current_price=info.get("currentPrice"),
         )
 
+    async def get_analyst_estimates(self, ticker: str) -> AnalystEstimates:
+        """Fetch Wall Street analyst estimates and earnings history."""
+        info, earnings_dates = await asyncio.to_thread(
+            self._fetch_info_and_earnings, ticker,
+        )
+        if not info or info.get("marketCap") is None:
+            raise TickerNotFoundError(ticker, provider="yahoo")
+
+        earnings_history = _parse_earnings_dates(earnings_dates)
+
+        return AnalystEstimates(
+            ticker=ticker,
+            target_low=info.get("targetLowPrice"),
+            target_median=info.get("targetMedianPrice"),
+            target_high=info.get("targetHighPrice"),
+            target_mean=info.get("targetMeanPrice"),
+            recommendation=info.get("recommendationKey"),
+            recommendation_score=info.get("recommendationMean"),
+            num_analysts=info.get("numberOfAnalystOpinions"),
+            forward_pe=info.get("forwardPE"),
+            forward_eps=info.get("forwardEps"),
+            earnings_history=earnings_history,
+        )
+
+    @staticmethod
+    def _fetch_info_and_earnings(ticker: str) -> tuple[dict[str, Any], Any]:
+        t = yf.Ticker(ticker)  # type: ignore[no-untyped-call]
+        info = dict(t.info)
+        try:
+            earnings_dates = t.earnings_dates
+        except Exception:  # noqa: BLE001 — yfinance may raise various exceptions
+            earnings_dates = None
+        return info, earnings_dates
+
     @staticmethod
     def _fetch_history(ticker: str, start: str, end: str) -> Any:
         t = yf.Ticker(ticker)  # type: ignore[no-untyped-call]
@@ -165,3 +204,43 @@ def _compute_fcf_yield(info: dict[str, Any]) -> float | None:
     if fcf is not None and mcap is not None and mcap > 0:
         return float(fcf) / float(mcap)
     return None
+
+
+def _parse_earnings_dates(df: Any) -> list[EarningsEntry]:
+    """Convert yfinance earnings_dates DataFrame to list of EarningsEntry.
+
+    DataFrame is indexed by earnings date with columns:
+    'EPS Estimate', 'Reported EPS', 'Surprise(%)'.
+    Rows with no Reported EPS are future (upcoming) — skip them.
+    """
+    if df is None or not hasattr(df, "iterrows") or df.empty:
+        return []
+
+    entries: list[EarningsEntry] = []
+    for idx, row in df.iterrows():
+        reported = row.get("Reported EPS")
+        if reported is None or (isinstance(reported, float) and math.isnan(reported)):
+            continue  # future earnings date — not yet reported
+        period = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)
+        estimate = row.get("EPS Estimate")
+        surprise = row.get("Surprise(%)")
+        entries.append(
+            EarningsEntry(
+                period=period,
+                eps_estimate=_safe_float(estimate),
+                eps_actual=_safe_float(reported),
+                surprise_pct=_safe_float(surprise),
+            ),
+        )
+    return entries
+
+
+def _safe_float(val: Any) -> float | None:
+    """Convert to float, returning None for NaN or non-numeric values."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if math.isnan(f) else f
+    except (TypeError, ValueError):
+        return None

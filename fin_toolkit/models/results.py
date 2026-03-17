@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from fin_toolkit.models.financial import KeyMetrics
+from fin_toolkit.models.financial import AnalystEstimates, KeyMetrics
 
 
 class TechnicalResult(BaseModel):
@@ -162,6 +162,7 @@ class InvestmentIdeaResult(BaseModel):
     current_price: float | None
     consensus: ConsensusResult
     fundamentals: FundamentalResult
+    analyst_estimates: AnalystEstimates | None = None
     catalysts: list[CatalystItem]
     revenue_cagr_3y: float | None
     ebitda_cagr_3y: float | None
@@ -212,6 +213,7 @@ class DeepDiveItem(BaseModel):
     technical: TechnicalResult | None
     risk: RiskResult | None
     consensus: ConsensusResult | None
+    analyst_estimates: AnalystEstimates | None = None
     news: list[SearchResult]
     warnings: list[str]
 

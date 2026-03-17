@@ -28,6 +28,7 @@ def render_investment_idea_html(result: InvestmentIdeaResult) -> str:
     sections: list[str] = [
         _header_section(result),
         _thesis_section(result),
+        _analyst_estimates_section(result),
         _target_price_section(result),
         _price_chart_section(result),
         _consensus_section(result),
@@ -177,6 +178,94 @@ def _thesis_section(r: InvestmentIdeaResult) -> str:
         f'<div class="section">'
         f"<h2>{i18n_span('investment_thesis', HEADERS)}</h2>"
         f'<p class="thesis-text">{thesis_span}</p></div>'
+    )
+
+
+def _analyst_estimates_section(r: InvestmentIdeaResult) -> str:
+    """Wall Street analyst estimates: targets, ratings, earnings history."""
+    ae = r.analyst_estimates
+    if ae is None:
+        return ""
+
+    header = i18n_span("analyst_estimates", HEADERS)
+
+    # Ratings badge
+    rating_html = ""
+    if ae.recommendation:
+        badge_color = {
+            "strong_buy": "#00d68f", "buy": "#00d68f",
+            "hold": "#ffd93d", "neutral": "#ffd93d",
+            "sell": "#ff6b6b", "strong_sell": "#ff6b6b",
+        }.get(ae.recommendation, "#aaa")
+        analysts_text = f" ({ae.num_analysts} analysts)" if ae.num_analysts else ""
+        rating_html = (
+            f'<div style="text-align:center;margin:12px 0">'
+            f'<span style="background:{badge_color};color:#111;padding:6px 18px;'
+            f'border-radius:20px;font-weight:bold;font-size:1.2em">'
+            f'{ae.recommendation.upper()}</span>'
+            f'<span style="color:#aaa;margin-left:8px">{analysts_text}</span></div>'
+        )
+
+    # Target price gauge
+    target_html = ""
+    if ae.target_low and ae.target_high and ae.target_mean:
+        current = r.current_price or 0
+        upside = ((ae.target_mean / current) - 1) * 100 if current > 0 else 0
+        upside_color = "#00d68f" if upside > 0 else "#ff6b6b"
+        target_html = (
+            f'<div class="metric-grid" style="margin:12px 0">'
+            f'<div class="metric-card"><div class="metric-value">'
+            f'${ae.target_low:,.0f}</div><div class="metric-label">Low</div></div>'
+            f'<div class="metric-card"><div class="metric-value">'
+            f'${ae.target_mean:,.0f}</div><div class="metric-label">Mean</div></div>'
+            f'<div class="metric-card"><div class="metric-value">'
+            f'${ae.target_high:,.0f}</div><div class="metric-label">High</div></div>'
+            f'<div class="metric-card"><div class="metric-value" '
+            f'style="color:{upside_color}">{upside:+.1f}%</div>'
+            f'<div class="metric-label">Upside (Mean)</div></div></div>'
+        )
+
+    # Forward estimates
+    fwd_html = ""
+    fwd_parts = []
+    if ae.forward_pe:
+        fwd_parts.append(f"Forward P/E: {ae.forward_pe:.1f}")
+    if ae.forward_eps:
+        fwd_parts.append(f"Forward EPS: ${ae.forward_eps:.2f}")
+    if fwd_parts:
+        fwd_html = (
+            f'<p style="text-align:center;color:#aaa;margin:8px 0">'
+            f'{" &bull; ".join(fwd_parts)}</p>'
+        )
+
+    # Earnings history table
+    earnings_html = ""
+    if ae.earnings_history:
+        rows = ""
+        for e in ae.earnings_history[:8]:
+            surprise_color = (
+                "#00d68f" if e.surprise_pct and e.surprise_pct > 0
+                else "#ff6b6b" if e.surprise_pct and e.surprise_pct < 0
+                else "#aaa"
+            )
+            est = f"${e.eps_estimate:.2f}" if e.eps_estimate is not None else "—"
+            act = f"${e.eps_actual:.2f}" if e.eps_actual is not None else "—"
+            surp = (
+                f'<span style="color:{surprise_color}">{e.surprise_pct:+.1f}%</span>'
+                if e.surprise_pct is not None else "—"
+            )
+            rows += f"<tr><td>{e.period}</td><td>{est}</td><td>{act}</td><td>{surp}</td></tr>"
+        earnings_html = (
+            '<table class="metric-table" style="margin-top:12px">'
+            "<thead><tr><th>Period</th><th>EPS Est.</th>"
+            "<th>EPS Actual</th><th>Surprise</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table>"
+        )
+
+    return (
+        f'<div class="section">'
+        f"<h2>{header}</h2>"
+        f"{rating_html}{target_html}{fwd_html}{earnings_html}</div>"
     )
 
 

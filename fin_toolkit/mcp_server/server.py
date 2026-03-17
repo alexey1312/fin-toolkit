@@ -229,6 +229,35 @@ async def run_fundamental_analysis(
 
 
 @mcp.tool
+async def get_analyst_estimates(
+    ticker: str,
+    format: str = "toon",
+) -> str:
+    """Get Wall Street analyst target prices, ratings, and earnings history.
+
+    Returns analyst consensus (Buy/Hold/Sell), target prices (low/median/high),
+    forward P/E, forward EPS, and historical EPS actual vs estimate with surprise %.
+    Data sourced from Yahoo Finance. Works best for US and dual-listed stocks.
+    See also: run_fundamental_analysis for ratios, run_all_agents for AI analysis.
+
+    Args:
+        ticker: Stock ticker symbol (e.g. AAPL, KSPI).
+        format: Response format - "toon" (default, token-efficient) or "json".
+    """
+    try:
+        from fin_toolkit.providers.yahoo import YahooFinanceProvider
+
+        yahoo = YahooFinanceProvider()
+        result = await yahoo.get_analyst_estimates(ticker)
+        return serialize(result.model_dump(), format)
+    except FinToolkitError as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        logger.exception("Unexpected error in get_analyst_estimates")
+        return _error_response(f"Internal error: {exc}")
+
+
+@mcp.tool
 async def run_risk_analysis(
     tickers: list[str],
     period: str = "1y",
@@ -405,6 +434,17 @@ async def _run_consensus(ticker: str) -> ConsensusResult:
             agent_results[name] = result
 
     return compute_consensus(agent_results, agent_errors)
+
+
+async def _fetch_analyst_estimates(ticker: str) -> Any:
+    """Fetch analyst estimates from Yahoo. Returns AnalystEstimates or None on failure."""
+    try:
+        from fin_toolkit.providers.yahoo import YahooFinanceProvider
+
+        yahoo = YahooFinanceProvider()
+        return await yahoo.get_analyst_estimates(ticker)
+    except Exception:
+        return None
 
 
 def _compute_risk(price_data: PriceData) -> RiskResult:
@@ -784,9 +824,11 @@ async def generate_investment_idea(
         financials_task = _provider_router.get_financials(ticker)
         metrics_task = _provider_router.get_metrics(ticker)
         prices_task = _provider_router.get_prices(ticker, start, end)
+        estimates_task = _fetch_analyst_estimates(ticker)
 
         results = await asyncio.gather(
             consensus_task, financials_task, metrics_task, prices_task,
+            estimates_task,
             return_exceptions=True,
         )
         if ctx:
@@ -796,6 +838,7 @@ async def generate_investment_idea(
         financials = _unwrap(results[1], "financials")
         metrics = _unwrap(results[2], "metrics")
         price_data = _unwrap(results[3], "prices")
+        analyst_est = _unwrap(results[4], "analyst_estimates")
 
         idea_warnings: list[str] = []
 
@@ -821,6 +864,14 @@ async def generate_investment_idea(
         if isinstance(price_data, str):
             idea_warnings.append(price_data)
             price_data = PriceData(ticker=ticker, period=period, prices=[])
+
+        from fin_toolkit.models.financial import AnalystEstimates
+
+        analyst_estimates: AnalystEstimates | None = None
+        if isinstance(analyst_est, str):
+            idea_warnings.append(analyst_est)
+        elif isinstance(analyst_est, AnalystEstimates):
+            analyst_estimates = analyst_est
 
         # Step 2: search for catalysts/risks
         search_results_catalysts: list[Any] = []
@@ -921,6 +972,7 @@ async def generate_investment_idea(
             current_price=metrics.current_price,
             consensus=consensus,
             fundamentals=fund_result,
+            analyst_estimates=analyst_estimates,
             catalysts=catalysts,
             revenue_cagr_3y=revenue_cagr,
             ebitda_cagr_3y=ebitda_cagr,
@@ -1027,11 +1079,29 @@ def _render_html_idea(idea: InvestmentIdeaResult) -> str:
     price_line = (
         f"Price: {sym}{idea.current_price:,.2f}\n" if idea.current_price else ""
     )
+    analyst_line = ""
+    if idea.analyst_estimates:
+        ae = idea.analyst_estimates
+        parts = []
+        if ae.recommendation:
+            parts.append(f"Rating: {ae.recommendation}")
+        if ae.num_analysts:
+            parts.append(f"({ae.num_analysts} analysts)")
+        if ae.target_mean:
+            parts.append(f"Target: {sym}{ae.target_mean:,.2f}")
+        if ae.target_low and ae.target_high:
+            parts.append(f"[{sym}{ae.target_low:,.2f}–{sym}{ae.target_high:,.2f}]")
+        if ae.forward_pe:
+            parts.append(f"Fwd P/E: {ae.forward_pe:.1f}")
+        if parts:
+            analyst_line = "Analysts: " + " ".join(parts) + "\n"
+
     return (
         f"Investment Idea: {idea.ticker}\n"
         f"Signal: {idea.consensus.consensus_signal} "
         f"({idea.consensus.consensus_score:.0f}/100)\n"
         f"{price_line}"
+        f"{analyst_line}"
         f"Scenarios:\n{scenarios_summary}"
         f"Report saved: {path}\n"
         f"Opened in browser."
@@ -1124,6 +1194,7 @@ async def _deep_dive_single(
         "financials": _provider_router.get_financials(ticker),
         "metrics": _provider_router.get_metrics(ticker),
         "consensus": _run_consensus(ticker),
+        "estimates": _fetch_analyst_estimates(ticker),
     }
     # Add news search if available
     if _search_router is not None:
@@ -1163,6 +1234,7 @@ async def _deep_dive_single(
         technical=technical,
         risk=risk_result,
         consensus=fetched.get("consensus"),
+        analyst_estimates=fetched.get("estimates"),
         news=news_items,
         warnings=warnings,
     )

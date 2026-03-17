@@ -1,6 +1,6 @@
 # MCP Tools
 
-fin-toolkit exposes 20 MCP tools for financial analysis. All tools accept a `format` parameter (`"toon"` or `"json"`, default: `"toon"`).
+fin-toolkit exposes 21 MCP tools for financial analysis. All tools accept a `format` parameter (`"toon"` or `"json"`, default: `"toon"`).
 
 | Tool | Category | Description |
 |------|----------|-------------|
@@ -9,6 +9,7 @@ fin-toolkit exposes 20 MCP tools for financial analysis. All tools accept a `for
 | [`compare_stocks`](market-data.md#compare_stocks) | Market Data | Side-by-side comparison |
 | [`run_technical_analysis`](analysis.md#run_technical_analysis) | Analysis | RSI, EMA, MACD, Bollinger Bands |
 | [`run_fundamental_analysis`](analysis.md#run_fundamental_analysis) | Analysis | ROE, P/E, margins, ratios |
+| [`get_analyst_estimates`](analysis.md#get_analyst_estimates) | Analysis | Analyst targets, ratings, EPS history |
 | [`run_risk_analysis`](analysis.md#run_risk_analysis) | Analysis | Volatility, VaR, correlation |
 | [`run_portfolio_analysis`](analysis.md#run_portfolio_analysis) | Analysis | Correlation-adjusted sizing |
 | [`run_agent`](agents.md#run_agent) | Agents | Single AI agent analysis |

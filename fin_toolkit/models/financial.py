@@ -32,3 +32,34 @@ class KeyMetrics(BaseModel):
     fcf_yield: float | None = None
     shares_outstanding: float | None = None
     current_price: float | None = None
+
+
+class EarningsEntry(BaseModel):
+    """A single earnings period (quarterly)."""
+
+    period: str  # e.g. "2025-Q4", "2025-12-31"
+    eps_estimate: float | None
+    eps_actual: float | None
+    surprise_pct: float | None
+    revenue_estimate: float | None = None
+    revenue_actual: float | None = None
+
+
+class AnalystEstimates(BaseModel):
+    """Wall Street analyst consensus estimates and ratings."""
+
+    ticker: str
+    # Target prices
+    target_low: float | None
+    target_median: float | None
+    target_high: float | None
+    target_mean: float | None
+    # Ratings
+    recommendation: str | None  # "buy", "hold", "sell", "strong_buy", etc.
+    recommendation_score: float | None  # 1.0 (strong buy) to 5.0 (sell)
+    num_analysts: int | None
+    # Forward estimates
+    forward_pe: float | None = None
+    forward_eps: float | None = None
+    # Earnings history
+    earnings_history: list[EarningsEntry] | None = None

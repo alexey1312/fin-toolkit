@@ -39,6 +39,10 @@ This project IS an MCP server built on FastMCP. Run `fin-toolkit serve` to start
 - `Ticker.financials`/`.balance_sheet`/`.cashflow` DataFrames: columns=dates, index=field names (e.g. "Total Revenue", not "revenue")
 - `_df_to_dict()` in `yahoo.py` normalizes to flat `{field: value}` using `_FIELD_MAP`
 - `enterprise_value` lives in `.info["enterpriseValue"]`, NOT in balance_sheet DataFrame
+- `get_analyst_estimates()` uses `.info` for targets/ratings + `.earnings_dates` for EPS history
+- `.info` analyst fields: `targetLowPrice`, `targetMedianPrice`, `targetHighPrice`, `targetMeanPrice`, `recommendationKey`, `recommendationMean`, `numberOfAnalystOpinions`, `forwardPE`, `forwardEps`
+- `.earnings_dates` DataFrame: index=dates, columns `EPS Estimate`, `Reported EPS`, `Surprise(%)`; rows with NaN `Reported EPS` are future dates (skip them)
+- Dual-listed tickers (KSPI): `forwardPE` may be garbage (KZT EPS / USD price) — known yfinance limitation
 - Some fields are NaN for certain tickers (e.g. AAPL has no Interest Expense) — this is a data limitation, not a bug
 - 1 calendar year ≈ 250 trading days; period mapping uses 400 days buffer for 252-window volatility
 - `_df_to_history(df)` in `yahoo.py` converts ALL columns to `list[dict]` for historical trends; columns may be datetime or string (in mocks) — check `hasattr(col, "strftime")`
@@ -56,10 +60,27 @@ All major boundaries are `typing.Protocol` classes with `@runtime_checkable`:
 
 New providers/agents implement the protocol; no base class inheritance needed.
 
+### KASE ticker reference
+
+- HSBK = Halyk Bank, CCBN = Bank CenterCredit, ASBN = ForteBank, KSPI = Kaspi.kz
+- KSPI is dual-listed (KASE + NASDAQ) — analyst estimates available via Yahoo
+
 ### Routing & fallback chains
 
 - `ProviderRouter` resolves data sources in order: explicit provider → market mapping (config) → primary → fallbacks. All methods iterate the chain and raise `AllProvidersFailedError` if exhausted.
 - `SearchRouter` does the same for search providers.
+
+### Analyst estimates & earnings
+
+- `AnalystEstimates` model (`models/financial.py`): target prices, recommendation, forward P/E/EPS, earnings history
+- `EarningsEntry` model: per-quarter EPS estimate vs actual with surprise %
+- `YahooFinanceProvider.get_analyst_estimates(ticker)` — NOT part of `DataProvider` protocol (Yahoo-specific)
+- MCP tool `get_analyst_estimates(ticker)` — creates `YahooFinanceProvider()` inline (stateless, cheap)
+- Integrated into `generate_investment_idea` (parallel fetch, optional field) and `deep_dive` (per-ticker)
+- `InvestmentIdeaResult.analyst_estimates` and `DeepDiveItem.analyst_estimates` — `Optional`, None when Yahoo unavailable
+- HTML report: `_analyst_estimates_section()` renders rating badge, target price gauge, forward estimates, earnings history table
+- Only works for Yahoo-covered tickers (US, dual-listed). KASE-only tickers (HSBK, CCBN) return structured error
+- Optional parallel data sources: add to `asyncio.gather` in `generate_investment_idea`/`deep_dive`, handle via `_unwrap()` → string (warning) or model instance, pass `None` to result model if unavailable
 
 ### MCP server wiring
 
@@ -172,7 +193,8 @@ Fallback order: DuckDuckGo → SearXNG → Google → Perplexity → Tavily → 
 
 - `analysis/idea.py` — pure functions (no async/IO): `compute_cagr`, `compute_fcf_waterfall`, `compute_scenarios`, `classify_catalysts`, `detect_risks`
 - `analysis/screening.py` — `compute_quick_score(metrics)`: 0-100 from P/E, P/B, EV/EBITDA, FCF yield, D/E, div yield, ROE; `parse_filter(expr)` + `matches_filters(metrics, filters)` for custom screener filters (operators: `<`, `>`, `<=`, `>=`, `=`, `min..max`)
-- `report/html_report.py` — self-contained HTML with Plotly charts (CDN), dark theme, 13 sections with EN/RU toggle (JS-based, zero reload)
+- `report/html_report.py` — self-contained HTML with Plotly charts (CDN), dark theme, 14 sections with EN/RU toggle (JS-based, zero reload)
+- Adding new section: create `_section_name(r) -> str` in `html_report.py`, add key to `HEADERS` in `report/i18n.py`, insert in `sections` list in `render_investment_idea_html()`
 - `report/i18n.py` — `LangPair` dataclass, `HEADERS`/`SIGNALS`/`METRIC_LABELS`/`DISCLAIMER` dicts, `i18n_span()` for HTML, `currency_symbol(ticker)` (₽/₸/$), `fmt_price()`
 - `report/narrative.py` — template-based (no LLM) thesis/FCF/target narratives: `generate_thesis()`, `generate_fcf_narrative()`, `generate_target_summary()` → `LangPair`
 - MCP tools: `generate_investment_idea` (html/json/toon), `screen_stocks` (two-stage + optional `filters` param), `parse_report`

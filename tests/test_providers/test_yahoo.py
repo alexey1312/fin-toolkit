@@ -57,6 +57,22 @@ def _make_cashflow_df() -> pd.DataFrame:
     )
 
 
+def _make_earnings_dates_df() -> pd.DataFrame:
+    """Create a mock yfinance earnings_dates DataFrame.
+
+    Real yfinance returns a DataFrame indexed by earnings date with columns:
+    'EPS Estimate', 'Reported EPS', 'Surprise(%)'.
+    """
+    return pd.DataFrame(
+        {
+            "EPS Estimate": [1.50, 1.40],
+            "Reported EPS": [1.65, 1.38],
+            "Surprise(%)": [10.0, -1.43],
+        },
+        index=pd.to_datetime(["2024-10-31", "2024-07-25"]),
+    )
+
+
 class TestYahooFinanceProvider:
     @patch("fin_toolkit.providers.yahoo.yf")
     async def test_get_prices_success(self, mock_yf: MagicMock) -> None:
@@ -142,3 +158,92 @@ class TestYahooFinanceProvider:
         provider = YahooFinanceProvider()
         with pytest.raises(TickerNotFoundError):
             await provider.get_metrics("INVALID")
+
+    # -----------------------------------------------------------------------
+    # get_analyst_estimates
+    # -----------------------------------------------------------------------
+
+    @patch("fin_toolkit.providers.yahoo.yf")
+    async def test_get_analyst_estimates_full(self, mock_yf: MagicMock) -> None:
+        mock_ticker = MagicMock()
+        mock_ticker.info = {
+            **_make_info(),
+            "targetLowPrice": 160.0,
+            "targetMedianPrice": 190.0,
+            "targetHighPrice": 220.0,
+            "targetMeanPrice": 195.0,
+            "recommendationKey": "buy",
+            "recommendationMean": 2.1,
+            "numberOfAnalystOpinions": 38,
+            "forwardPE": 25.0,
+            "forwardEps": 7.2,
+        }
+        mock_ticker.earnings_dates = _make_earnings_dates_df()
+        mock_yf.Ticker.return_value = mock_ticker
+
+        provider = YahooFinanceProvider()
+        result = await provider.get_analyst_estimates("AAPL")
+
+        assert result.ticker == "AAPL"
+        assert result.target_low == 160.0
+        assert result.target_median == 190.0
+        assert result.target_high == 220.0
+        assert result.target_mean == 195.0
+        assert result.recommendation == "buy"
+        assert result.recommendation_score == 2.1
+        assert result.num_analysts == 38
+        assert result.forward_pe == 25.0
+        assert result.forward_eps == 7.2
+        assert result.earnings_history is not None
+        assert len(result.earnings_history) == 2
+        assert result.earnings_history[0].eps_estimate == 1.50
+        assert result.earnings_history[0].eps_actual == 1.65
+        assert result.earnings_history[0].surprise_pct == pytest.approx(10.0)
+
+    @patch("fin_toolkit.providers.yahoo.yf")
+    async def test_get_analyst_estimates_no_targets(self, mock_yf: MagicMock) -> None:
+        """Ticker with no analyst coverage returns None fields."""
+        mock_ticker = MagicMock()
+        mock_ticker.info = _make_info()  # no target* or recommendation* keys
+        mock_ticker.earnings_dates = pd.DataFrame()
+        mock_yf.Ticker.return_value = mock_ticker
+
+        provider = YahooFinanceProvider()
+        result = await provider.get_analyst_estimates("SMALL")
+
+        assert result.ticker == "SMALL"
+        assert result.target_mean is None
+        assert result.recommendation is None
+        assert result.num_analysts is None
+        assert result.earnings_history == []
+
+    @patch("fin_toolkit.providers.yahoo.yf")
+    async def test_get_analyst_estimates_empty_info_raises(
+        self, mock_yf: MagicMock,
+    ) -> None:
+        mock_ticker = MagicMock()
+        mock_ticker.info = {}
+        mock_yf.Ticker.return_value = mock_ticker
+
+        provider = YahooFinanceProvider()
+        with pytest.raises(TickerNotFoundError):
+            await provider.get_analyst_estimates("INVALID")
+
+    @patch("fin_toolkit.providers.yahoo.yf")
+    async def test_get_analyst_estimates_earnings_dates_exception(
+        self, mock_yf: MagicMock,
+    ) -> None:
+        """earnings_dates raising should not crash — returns empty history."""
+        mock_ticker = MagicMock()
+        mock_ticker.info = {**_make_info(), "targetMeanPrice": 200.0}
+        mock_ticker.earnings_dates = property(lambda self: (_ for _ in ()).throw(Exception))
+        type(mock_ticker).earnings_dates = property(
+            lambda self: (_ for _ in ()).throw(Exception("no data")),
+        )
+        mock_yf.Ticker.return_value = mock_ticker
+
+        provider = YahooFinanceProvider()
+        result = await provider.get_analyst_estimates("AAPL")
+
+        assert result.target_mean == 200.0
+        assert result.earnings_history == []

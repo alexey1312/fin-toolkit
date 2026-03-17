@@ -27,6 +27,29 @@ sector: null          # optional: auto-detected if omitted
 
 Includes sector comparison when sector is detected. For KASE tickers, ratios come from StockAnalysis (KZT-consistent).
 
+## get_analyst_estimates
+
+Get Wall Street analyst target prices, ratings, and earnings history.
+
+```
+ticker: "KSPI"
+```
+
+**Target prices:** low, median, mean, high — analyst consensus price targets.
+
+**Ratings:** recommendation (buy/hold/sell), recommendation score (1.0–5.0), number of analysts covering.
+
+**Forward estimates:** forward P/E, forward EPS.
+
+**Earnings history:** up to 24 quarters of EPS estimate vs actual with surprise %. Shows whether the company consistently beats or misses expectations.
+
+Data sourced from Yahoo Finance. Works best for US and dual-listed stocks (e.g. KSPI on NASDAQ). KASE-only tickers (HSBK, CCBN) will return an error since Yahoo doesn't cover them.
+
+Automatically included in `generate_investment_idea` and `deep_dive` results.
+
+!!! note "Dual-listed caveats"
+    For dual-listed tickers like KSPI, `forward_pe` may be unreliable (Yahoo divides KZT EPS by USD price). Use `forward_eps` and current price to compute manually.
+
 ## run_risk_analysis
 
 Compute volatility, Value at Risk, and correlation matrix for one or more tickers.
